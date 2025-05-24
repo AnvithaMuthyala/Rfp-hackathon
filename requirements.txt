@@ -1,0 +1,11 @@
+streamlit 
+pandas
+plotly
+openai>=1.0.0
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+langchain>=0.2.0
+langchain-openai>=0.2.0
+langchain-community>=0.2.0
+langchain-core>=0.2.0
+langchain-core-community>=0.2.0
