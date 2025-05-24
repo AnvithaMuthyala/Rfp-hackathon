@@ -33,6 +33,78 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Company Configuration - Add this before other code
+COMPANY_PROFILE = {
+    "name": "TechVision Solutions",
+    "industry": "Custom Software Development & Digital Solutions",
+    "founded": "2015",
+    "employees": "150+ professionals",
+    "headquarters": "San Francisco, CA with offices in Austin, TX and London, UK",
+    "specializations": [
+        "Enterprise Software Development",
+        "Cloud Solutions & Migration",
+        "AI/ML Integration",
+        "Mobile Application Development",
+        "DevOps & Infrastructure",
+        "Cybersecurity Solutions"
+    ],
+    "certifications": [
+        "ISO 27001 (Information Security)",
+        "SOC 2 Type II Compliance",
+        "AWS Advanced Consulting Partner",
+        "Microsoft Gold Partner",
+        "GDPR Compliant"
+    ],
+    "portfolio_highlights": [
+        "200+ successful projects delivered",
+        "Fortune 500 clients across multiple industries",
+        "99.5% client retention rate",
+        "Average project delivery 15% faster than industry standard"
+    ],
+    "key_differentiators": [
+        "Agile methodology with weekly client demos",
+        "24/7 global support coverage",
+        "Proprietary AI-assisted development frameworks",
+        "End-to-end solution delivery",
+        "Post-launch maintenance and scaling support"
+    ],
+    "recent_achievements": [
+        "Winner of 'Best Custom Software Developer 2024' - Tech Excellence Awards",
+        "Successfully migrated 50+ legacy systems to cloud",
+        "Developed AI solutions saving clients avg 40% operational costs",
+        "Achieved 99.9% uptime across all client deployments in 2024"
+    ]
+}
+
+def get_company_context() -> str:
+    """Generate company context for LLM prompts"""
+    return f"""
+COMPANY CONTEXT:
+You are creating this proposal on behalf of {COMPANY_PROFILE['name']}, a leading {COMPANY_PROFILE['industry']} company.
+
+Company Overview:
+- Founded: {COMPANY_PROFILE['founded']}
+- Team: {COMPANY_PROFILE['employees']}
+- Locations: {COMPANY_PROFILE['headquarters']}
+
+Core Specializations:
+{chr(10).join([f"• {spec}" for spec in COMPANY_PROFILE['specializations']])}
+
+Key Certifications & Compliance:
+{chr(10).join([f"• {cert}" for cert in COMPANY_PROFILE['certifications']])}
+
+Portfolio Highlights:
+{chr(10).join([f"• {highlight}" for highlight in COMPANY_PROFILE['portfolio_highlights']])}
+
+Competitive Advantages:
+{chr(10).join([f"• {diff}" for diff in COMPANY_PROFILE['key_differentiators']])}
+
+Recent Achievements:
+{chr(10).join([f"• {achievement}" for achievement in COMPANY_PROFILE['recent_achievements']])}
+
+IMPORTANT: Always write the proposal from {COMPANY_PROFILE['name']}'s perspective, highlighting our capabilities, experience, and value propositions.
+"""
+
 # Custom CSS for enhanced styling
 st.markdown("""
 <style>
@@ -116,6 +188,13 @@ st.markdown("""
         border-left: 4px solid #ffa726;
         margin: 1rem 0;
     }
+    .company-info {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        color: white;
+        margin: 1rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -138,7 +217,8 @@ class AzureOpenAIConfig:
             api_version=self.api_version,
             azure_endpoint=self.endpoint
         )
-# State definition (same as before)
+
+# State definition (UPDATED - removed final orchestrator)
 class ProposalState(TypedDict):
     rfp_data: dict
     current_agent: str
@@ -149,7 +229,7 @@ class ProposalState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
     next_action: str
 
-# Simplified LangGraph System without SQLite persistence
+# Simplified LangGraph System without SQLite persistence (UPDATED)
 class SimpleLangGraphProposalSystem:
     def __init__(self, config: AzureOpenAIConfig):
         self.config = config
@@ -171,31 +251,29 @@ class SimpleLangGraphProposalSystem:
         )
     
     def _create_workflow(self):
-        """Create the LangGraph workflow - simplified without checkpointer"""
+        """Create the LangGraph workflow - UPDATED workflow without final orchestrator"""
         workflow = StateGraph(ProposalState)
         
-        # Add nodes for each agent
+        # Add nodes for each agent (REMOVED final_orchestrator)
         workflow.add_node("orchestrator", self.orchestrator_agent)
         workflow.add_node("tech_lead", self.tech_lead_agent)
         workflow.add_node("estimation", self.estimation_agent)
         workflow.add_node("timeline", self.timeline_agent)
         workflow.add_node("legal", self.legal_agent)
         workflow.add_node("sales", self.sales_agent)
-        workflow.add_node("final_orchestrator", self.final_orchestrator_agent)
         
         # Set entry point
         workflow.set_entry_point("orchestrator")
         
-        # Simple linear workflow
+        # Simple linear workflow (UPDATED - sales goes to END)
         workflow.add_edge("orchestrator", "tech_lead")
         workflow.add_edge("tech_lead", "estimation")
         workflow.add_edge("estimation", "timeline")
         workflow.add_edge("timeline", "legal")
         workflow.add_edge("legal", "sales")
-        workflow.add_edge("sales", "final_orchestrator")
-        workflow.add_edge("final_orchestrator", END)
+        workflow.add_edge("sales", END)  # CHANGED: sales now goes directly to END
         
-        # Compile without checkpointer - much simpler!
+        # Compile without checkpointer
         return workflow.compile()
     
     def orchestrator_agent(self, state: ProposalState) -> ProposalState:
@@ -280,7 +358,7 @@ class SimpleLangGraphProposalSystem:
         return state
     
     def sales_agent(self, state: ProposalState) -> ProposalState:
-        """Sales/Marketing Agent"""
+        """Sales/Marketing Agent - UPDATED to be the final agent"""
         if not self.llm:
             output = self._get_mock_output("Sales/Marketing Agent")
         else:
@@ -291,162 +369,219 @@ class SimpleLangGraphProposalSystem:
         
         state["agent_outputs"]["Sales/Marketing Agent"] = output
         state["completed_agents"].append("Sales/Marketing Agent")
-        state["current_agent"] = "Proposal Orchestrator Agent (Final)"
+        state["current_agent"] = "completed"  # CHANGED: mark as completed instead of going to final orchestrator
         
         return state
     
-    def final_orchestrator_agent(self, state: ProposalState) -> ProposalState:
-        """Final Orchestrator Agent"""
-        if not self.llm:
-            output = self._get_mock_output("Proposal Orchestrator Agent (Final)")
-        else:
-            all_outputs = "\n\n".join([f"## {agent}: {output}" for agent, output in state["agent_outputs"].items()])
-            prompt = self._create_final_orchestrator_prompt(state["rfp_data"], all_outputs, state.get("human_feedback", {}))
-            messages = [HumanMessage(content=prompt)]
-            response = self.llm.invoke(messages)
-            output = response.content
-        
-        state["agent_outputs"]["Proposal Orchestrator Agent (Final)"] = output
-        state["completed_agents"].append("Proposal Orchestrator Agent (Final)")
-        state["current_agent"] = "completed"
-        
-        return state
-    
-    # All the prompt creation methods (same as before)
+    # All the prompt creation methods (UPDATED with company context)
     def _create_orchestrator_prompt(self, rfp_data: dict) -> str:
-        return f"""You are a Proposal Orchestrator Agent. Based on the RFP analysis below, create a comprehensive project breakdown.
+        company_context = get_company_context()
+        return f"""{company_context}
+
+You are a Proposal Orchestrator Agent working for {COMPANY_PROFILE['name']}. Based on the RFP analysis below, create a comprehensive project breakdown.
 
 RFP Data: {rfp_data}
 
 Create a detailed response covering:
-1. Project scope overview and understanding
-2. Key components identification and prioritization  
-3. Risk assessment and mitigation strategies
-4. Success criteria and metrics
+1. Project scope overview and understanding from {COMPANY_PROFILE['name']}'s perspective
+2. Key components identification and prioritization based on our expertise
+3. Risk assessment and mitigation strategies leveraging our experience
+4. Success criteria and metrics aligned with our proven methodologies
 
-Format as a professional proposal section with clear headings."""
+Format as a professional proposal section with clear headings. Emphasize {COMPANY_PROFILE['name']}'s relevant experience and capabilities."""
     
     def _create_tech_lead_prompt(self, rfp_data: dict, feedback: dict) -> str:
+        company_context = get_company_context()
         feedback_text = feedback.get("Tech Lead Agent", "")
         feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
         
-        return f"""You are a Technical Lead Agent. Design the technical architecture.
+        return f"""{company_context}
+
+You are a Technical Lead Agent representing {COMPANY_PROFILE['name']}. Design the technical architecture based on our proven expertise.
 
 RFP Data: {rfp_data}
 {feedback_context}
 
 Provide:
-1. Recommended technology stack
-2. System architecture design
-3. Security implementation strategy
-4. Development methodology
+1. Recommended technology stack leveraging {COMPANY_PROFILE['name']}'s specializations
+2. System architecture design based on our enterprise experience
+3. Security implementation strategy aligned with our ISO 27001 and SOC 2 certifications
+4. Development methodology using our proven Agile processes
 
-Be specific about technologies and implementation details."""
+Be specific about technologies and highlight how {COMPANY_PROFILE['name']}'s expertise ensures successful implementation."""
     
     def _create_estimation_prompt(self, rfp_data: dict, feedback: dict) -> str:
+        company_context = get_company_context()
         feedback_text = feedback.get("Estimation Agent", "")
         feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
         
-        return f"""You are an Estimation Agent. Provide detailed cost estimates.
+        return f"""{company_context}
+
+You are an Estimation Agent for {COMPANY_PROFILE['name']}. Provide detailed cost estimates based on our proven delivery track record.
 
 RFP Data: {rfp_data}
 {feedback_context}
 
 Provide:
-1. Work breakdown structure
-2. Effort estimation by component
-3. Resource allocation
-4. Total project cost with breakdown"""
+1. Work breakdown structure based on {COMPANY_PROFILE['name']}'s proven methodologies
+2. Effort estimation by component using our historical data and expertise
+3. Resource allocation leveraging our {COMPANY_PROFILE['employees']} team
+4. Total project cost with breakdown, highlighting our competitive advantage of 15% faster delivery
+
+Reference our portfolio of 200+ successful projects for credibility."""
     
     def _create_timeline_prompt(self, rfp_data: dict, feedback: dict) -> str:
+        company_context = get_company_context()
         feedback_text = feedback.get("Timeline Agent", "")
         feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
         
-        return f"""You are a Timeline Agent. Create project timeline.
+        return f"""{company_context}
+
+You are a Timeline Agent for {COMPANY_PROFILE['name']}. Create project timeline based on our proven delivery methodologies.
 
 RFP Data: {rfp_data}
 {feedback_context}
 
 Develop:
-1. Project phases and milestones
-2. Task breakdown and dependencies
-3. Resource scheduling
-4. Delivery schedule with key dates"""
+1. Project phases and milestones using {COMPANY_PROFILE['name']}'s Agile methodology
+2. Task breakdown and dependencies based on our proven processes
+3. Resource scheduling leveraging our global team capabilities
+4. Delivery schedule with key dates, emphasizing our track record of 15% faster delivery
+
+Highlight our weekly client demos and 24/7 global support coverage."""
     
     def _create_legal_prompt(self, rfp_data: dict, feedback: dict) -> str:
+        company_context = get_company_context()
         feedback_text = feedback.get("Legal & Compliance Agent", "")
         feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
         
-        return f"""You are a Legal & Compliance Agent. Provide legal guidance.
+        return f"""{company_context}
+
+You are a Legal & Compliance Agent for {COMPANY_PROFILE['name']}. Provide legal guidance based on our certifications and compliance expertise.
 
 RFP Data: {rfp_data}
 {feedback_context}
 
 Address:
-1. Regulatory compliance requirements
-2. Data protection considerations
-3. Contract terms recommendations
-4. Risk assessment"""
+1. Regulatory compliance requirements leveraging our ISO 27001 and SOC 2 Type II certifications
+2. Data protection considerations based on our GDPR compliance expertise
+3. Contract terms recommendations from our experience with Fortune 500 clients
+4. Risk assessment using insights from our 200+ successful projects
+
+Emphasize {COMPANY_PROFILE['name']}'s proven compliance track record and industry certifications."""
     
     def _create_sales_prompt(self, rfp_data: dict, feedback: dict) -> str:
+        company_context = get_company_context()
         feedback_text = feedback.get("Sales/Marketing Agent", "")
         feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
         
-        return f"""You are a Sales/Marketing Agent. Create value propositions.
+        return f"""{company_context}
+
+You are a Sales/Marketing Agent for {COMPANY_PROFILE['name']}. Create compelling value propositions highlighting our competitive advantages.
 
 RFP Data: {rfp_data}
 {feedback_context}
 
 Develop:
-1. Executive summary
-2. Company capabilities
-3. Competitive advantages
-4. Client benefits and ROI"""
-    
-    def _create_final_orchestrator_prompt(self, rfp_data: dict, all_outputs: str, feedback: dict) -> str:
-        feedback_text = feedback.get("Proposal Orchestrator Agent (Final)", "")
-        feedback_context = f"\n\nHuman Feedback: {feedback_text}" if feedback_text else ""
-        
-        return f"""You are the Final Proposal Orchestrator. Synthesize all outputs.
+1. Executive summary showcasing {COMPANY_PROFILE['name']}'s unique value proposition
+2. Company capabilities highlighting our specializations and achievements
+3. Competitive advantages including our 99.5% client retention rate and recent awards
+4. Client benefits and ROI based on our track record of saving clients 40% operational costs
 
-RFP Data: {rfp_data}
-Agent Outputs: {all_outputs}
-{feedback_context}
-
-Create final synthesis that:
-1. Integrates all aspects
-2. Ensures consistency
-3. Provides clear next steps
-4. Creates compelling conclusion"""
+Create a compelling closing that positions {COMPANY_PROFILE['name']} as the ideal partner for this project."""
     
     def _get_mock_output(self, agent_name: str) -> str:
-        """Mock outputs when Azure OpenAI isn't configured"""
+        """Mock outputs when Azure OpenAI isn't configured - UPDATED with company context"""
         mock_outputs = {
-            "Proposal Orchestrator Agent": "**Project Analysis Complete** - Successfully analyzed RFP requirements and identified 6 key project components.",
-            "Tech Lead Agent": "**Technical Architecture Designed** - Recommended modern tech stack with React frontend, Node.js backend, AWS deployment.",
-            "Estimation Agent": "**Cost Analysis Complete** - Total estimate: $85,000 over 26 weeks with detailed component breakdown.",
-            "Timeline Agent": "**Project Timeline Created** - 26-week schedule: Planning (4w), Development (16w), Testing (4w), Deployment (2w).",
-            "Legal & Compliance Agent": "**Compliance Review Complete** - Addressed GDPR, SOC2 requirements with low risk assessment.",
-            "Sales/Marketing Agent": "**Value Proposition Developed** - Created compelling executive summary highlighting competitive advantages.",
-            "Proposal Orchestrator Agent (Final)": "**Final Synthesis Complete** - Integrated all sections into cohesive proposal with clear next steps."
+            "Proposal Orchestrator Agent": f"**Project Analysis Complete** - {COMPANY_PROFILE['name']} has successfully analyzed RFP requirements and identified 6 key project components based on our expertise in {', '.join(COMPANY_PROFILE['specializations'][:3])}.",
+            "Tech Lead Agent": f"**Technical Architecture Designed** - {COMPANY_PROFILE['name']} recommends modern tech stack with React frontend, Node.js backend, AWS deployment leveraging our AWS Advanced Consulting Partner status.",
+            "Estimation Agent": f"**Cost Analysis Complete** - Based on {COMPANY_PROFILE['name']}'s 200+ successful projects, total estimate: $85,000 over 26 weeks with detailed component breakdown and 15% faster delivery.",
+            "Timeline Agent": f"**Project Timeline Created** - {COMPANY_PROFILE['name']}'s proven Agile methodology: 26-week schedule with weekly client demos and 24/7 support coverage.",
+            "Legal & Compliance Agent": f"**Compliance Review Complete** - {COMPANY_PROFILE['name']}'s ISO 27001 and SOC 2 Type II certifications ensure GDPR compliance with low risk assessment.",
+            "Sales/Marketing Agent": f"**Value Proposition Developed** - {COMPANY_PROFILE['name']}'s competitive advantages: 99.5% client retention, 200+ successful projects, and 2024 'Best Custom Software Developer' award winner."
         }
         return mock_outputs.get(agent_name, f"Mock output for {agent_name}")
     
     def run_single_agent(self, agent_name: str, state: ProposalState) -> ProposalState:
-        """Run a single agent"""
+        """Run a single agent - UPDATED agent list"""
         agent_functions = {
             "Proposal Orchestrator Agent": self.orchestrator_agent,
             "Tech Lead Agent": self.tech_lead_agent,
             "Estimation Agent": self.estimation_agent,
             "Timeline Agent": self.timeline_agent,
             "Legal & Compliance Agent": self.legal_agent,
-            "Sales/Marketing Agent": self.sales_agent,
-            "Proposal Orchestrator Agent (Final)": self.final_orchestrator_agent
+            "Sales/Marketing Agent": self.sales_agent
+            # REMOVED: "Proposal Orchestrator Agent (Final)"
         }
         
         if agent_name in agent_functions:
             return agent_functions[agent_name](state)
         return state
+
+    def generate_final_proposal(self, state: ProposalState) -> str:
+        """NEW: Generate final consolidated proposal from all agent outputs"""
+        if not state["agent_outputs"]:
+            return "No agent outputs available to consolidate."
+        
+        # Create header with company information
+        header = f"""
+# Proposal Response to RFP
+
+**Submitted by:** {COMPANY_PROFILE['name']}
+**Date:** {datetime.now().strftime('%B %d, %Y')}
+**Company:** {COMPANY_PROFILE['industry']}
+**Headquarters:** {COMPANY_PROFILE['headquarters']}
+
+---
+
+## Executive Summary
+
+{COMPANY_PROFILE['name']} is pleased to submit this comprehensive proposal in response to your RFP. With over {len(COMPANY_PROFILE['portfolio_highlights'])} years of experience and {COMPANY_PROFILE['portfolio_highlights'][0]}, we are uniquely positioned to deliver exceptional results for your project.
+
+---
+"""
+        
+        # Combine all agent outputs in logical order
+        agent_order = [
+            "Proposal Orchestrator Agent",
+            "Tech Lead Agent", 
+            "Estimation Agent",
+            "Timeline Agent",
+            "Legal & Compliance Agent",
+            "Sales/Marketing Agent"
+        ]
+        
+        proposal_sections = []
+        for agent_name in agent_order:
+            if agent_name in state["agent_outputs"]:
+                section_title = agent_name.replace(" Agent", "").replace("Proposal Orchestrator", "Project Overview")
+                proposal_sections.append(f"## {section_title}\n\n{state['agent_outputs'][agent_name]}\n")
+        
+        # Add company footer
+        footer = f"""
+---
+
+## About {COMPANY_PROFILE['name']}
+
+**Why Choose {COMPANY_PROFILE['name']}:**
+{chr(10).join([f"• {diff}" for diff in COMPANY_PROFILE['key_differentiators']])}
+
+**Recent Achievements:**
+{chr(10).join([f"• {achievement}" for achievement in COMPANY_PROFILE['recent_achievements']])}
+
+**Contact Information:**
+- Company: {COMPANY_PROFILE['name']}
+- Industry: {COMPANY_PROFILE['industry']}
+- Locations: {COMPANY_PROFILE['headquarters']}
+- Team Size: {COMPANY_PROFILE['employees']}
+
+We look forward to partnering with you on this exciting project.
+
+---
+*This proposal was generated by {COMPANY_PROFILE['name']}'s AI-assisted proposal system, ensuring comprehensive coverage while maintaining our personal touch and expertise.*
+"""
+        
+        return header + "\n".join(proposal_sections) + footer
 
 # Simplified system getter
 def get_simple_langgraph_system():
@@ -457,8 +592,17 @@ def get_simple_langgraph_system():
     return st.session_state.langgraph_system
 
 def render_manual_langgraph_ui():
-    """Manual control version - more reliable"""
+    """Manual control version - UPDATED to remove final orchestrator"""
     st.title("🤖 Agent Workflow Grid")
+    
+    # Add company info banner
+    st.markdown(f"""
+    <div class="company-info">
+        <h3>🏢 Proposal by {COMPANY_PROFILE['name']}</h3>
+        <p><strong>Industry:</strong> {COMPANY_PROFILE['industry']} | <strong>Team:</strong> {COMPANY_PROFILE['employees']} | <strong>Founded:</strong> {COMPANY_PROFILE['founded']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown("Watch as specialized AI agents work on different aspects of your proposal")
     
     # Check parsed data
@@ -485,7 +629,7 @@ def render_manual_langgraph_ui():
             next_action="start"
         )
     
-    # Agent status summary (your original beautiful UI)
+    # Agent status summary - UPDATED count
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         active_count = 1 if st.session_state.workflow_state["current_agent"] != "completed" else 0
@@ -497,7 +641,7 @@ def render_manual_langgraph_ui():
         completed_count = len(st.session_state.workflow_state["completed_agents"])
         st.metric("Completed", completed_count)
     with col4:
-        progress = (completed_count / 7) * 100
+        progress = (completed_count / 6) * 100  # CHANGED: now 6 agents instead of 7
         st.metric("Overall Progress", f"{progress:.1f}%")
     
     st.markdown("---")
@@ -510,7 +654,7 @@ def render_manual_langgraph_ui():
     else:
         st.success("🎉 **All Agents Completed!**")
     
-    # Control buttons
+    # Control buttons - UPDATED logic
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -574,19 +718,18 @@ def render_manual_langgraph_ui():
     with col2:
         if current_agent != "completed":
             if st.button("⚡ Run All Remaining", key="run_all"):
-                # Get list of agents to run
+                # Get list of agents to run - UPDATED agent list
                 remaining_agents = []
                 temp_agent = current_agent
                 
-                # Simple mapping of agent sequence
+                # Simple mapping of agent sequence - REMOVED final orchestrator
                 agent_sequence = [
                     "Proposal Orchestrator Agent",
                     "Tech Lead Agent", 
                     "Estimation Agent",
                     "Timeline Agent",
                     "Legal & Compliance Agent",
-                    "Sales/Marketing Agent",
-                    "Proposal Orchestrator Agent (Final)"
+                    "Sales/Marketing Agent"
                 ]
                 
                 # Find remaining agents
@@ -601,8 +744,8 @@ def render_manual_langgraph_ui():
                 
                 for i, agent in enumerate(remaining_agents):
                     if agent not in st.session_state.workflow_state["completed_agents"]:
-                        # Update progress
-                        progress = (i / total_agents) * 100
+                        # Update progress (convert to 0.0-1.0 range)
+                        progress = i / total_agents
                         progress_bar.progress(progress)
                         status_text.text(f"Processing {agent}... ({i+1}/{total_agents})")
                         
@@ -626,8 +769,8 @@ def render_manual_langgraph_ui():
                             st.error(f"Error running {agent}: {str(e)}")
                             break
                 
-                # Complete progress
-                progress_bar.progress(100)
+                # Complete progress (ensure it's 1.0, not 100)
+                progress_bar.progress(1.0)
                 status_text.text("✅ All agents completed!")
                 time.sleep(1)
                 
@@ -669,11 +812,15 @@ def render_manual_langgraph_ui():
         st.write(f"**Completed Agents:** {st.session_state.workflow_state['completed_agents']}")
         st.write(f"**Available Outputs:** {list(st.session_state.workflow_state['agent_outputs'].keys())}")
     
-    # Your beautiful agent grid display
+    # Your beautiful agent grid display - UPDATED to exclude final orchestrator
     st.markdown("### 🤖 Agent Status Grid")
     cols = st.columns(3)
     
     for i, (agent_name, agent_info) in enumerate(st.session_state.agents_workflow.items()):
+        # Skip the final orchestrator agent if it exists in the workflow
+        if "Final" in agent_name:
+            continue
+            
         with cols[i % 3]:
             # Determine status and styling
             if agent_name in st.session_state.workflow_state["completed_agents"]:
@@ -703,13 +850,13 @@ def render_manual_langgraph_ui():
             </div>
             """, unsafe_allow_html=True)
             
-            # Progress bar
+            # Progress bar (ensure values are between 0.0 and 1.0)
             if agent_info["status"] == "active":
-                st.progress(0, text=f"{agent_name} - Ready to run")
+                st.progress(0.0, text=f"{agent_name} - Ready to run")
             elif agent_info["status"] == "completed":
-                st.progress(100, text="✅ Completed")
+                st.progress(1.0, text="✅ Completed")
             else:
-                st.progress(0, text="⏳ Waiting")
+                st.progress(0.0, text="⏳ Waiting")
             
             # Show better output preview if completed - using modal
             if agent_info["status"] == "completed" and agent_info.get("output"):
@@ -937,15 +1084,14 @@ def render_manual_langgraph_ui():
                     """)
             
             elif modal_type == "info":
-                # Show agent information
+                # Show agent information - UPDATED descriptions with company context
                 agent_descriptions = {
-                    "Proposal Orchestrator Agent": "Project scope overview, risk assessment, success criteria, and stakeholder management plan",
-                    "Tech Lead Agent": "Technology stack recommendations, system architecture, security strategy, and development methodology", 
-                    "Estimation Agent": "Detailed cost breakdown, effort estimation, resource allocation, and project budget analysis",
-                    "Timeline Agent": "Project phases, milestones, task dependencies, and delivery schedule",
-                    "Legal & Compliance Agent": "Regulatory compliance analysis, contract terms, risk assessment, and legal recommendations",
-                    "Sales/Marketing Agent": "Executive summary, value propositions, competitive advantages, and client benefits",
-                    "Proposal Orchestrator Agent (Final)": "Final synthesis of all sections, consistency check, and comprehensive proposal integration"
+                    "Proposal Orchestrator Agent": f"Project scope overview, risk assessment, success criteria, and stakeholder management plan based on {COMPANY_PROFILE['name']}'s proven methodologies",
+                    "Tech Lead Agent": f"Technology stack recommendations, system architecture, security strategy leveraging {COMPANY_PROFILE['name']}'s certifications and development methodology", 
+                    "Estimation Agent": f"Detailed cost breakdown, effort estimation, resource allocation based on {COMPANY_PROFILE['name']}'s 200+ project experience",
+                    "Timeline Agent": f"Project phases, milestones, task dependencies using {COMPANY_PROFILE['name']}'s Agile methodology and delivery schedule",
+                    "Legal & Compliance Agent": f"Regulatory compliance analysis leveraging {COMPANY_PROFILE['name']}'s ISO 27001 and SOC 2 certifications, contract terms, and risk assessment",
+                    "Sales/Marketing Agent": f"Executive summary highlighting {COMPANY_PROFILE['name']}'s value propositions, competitive advantages, and client benefits"
                 }
                 
                 description = agent_descriptions.get(modal_agent, "Specialized proposal content")
@@ -955,60 +1101,52 @@ def render_manual_langgraph_ui():
                 st.markdown("### 🎯 Agent Responsibilities:")
                 
                 if modal_agent == "Proposal Orchestrator Agent":
-                    st.markdown("""
-                    - Analyze RFP requirements and structure
-                    - Identify key project components and priorities
-                    - Assess potential risks and mitigation strategies
-                    - Define success criteria and metrics
+                    st.markdown(f"""
+                    - Analyze RFP requirements using {COMPANY_PROFILE['name']}'s proven framework
+                    - Identify key project components based on our specializations
+                    - Assess potential risks using insights from 200+ projects
+                    - Define success criteria aligned with our methodologies
                     - Create stakeholder management approach
                     """)
                 elif modal_agent == "Tech Lead Agent":
-                    st.markdown("""
-                    - Recommend optimal technology stack
-                    - Design system architecture and patterns
-                    - Plan security implementation strategy
-                    - Define development methodology and practices
+                    st.markdown(f"""
+                    - Recommend optimal technology stack from {COMPANY_PROFILE['name']}'s expertise
+                    - Design system architecture leveraging our AWS Advanced Consulting Partner status
+                    - Plan security implementation using our ISO 27001 and SOC 2 certifications
+                    - Define development methodology based on our proven Agile processes
                     - Specify integration points and APIs
                     """)
                 elif modal_agent == "Estimation Agent":
-                    st.markdown("""
-                    - Break down work into detailed components
-                    - Estimate effort for each development area
-                    - Calculate resource requirements and costs
-                    - Factor in risk buffers and contingencies
+                    st.markdown(f"""
+                    - Break down work using {COMPANY_PROFILE['name']}'s proven methodologies
+                    - Estimate effort based on our 200+ successful projects
+                    - Calculate resource requirements from our {COMPANY_PROFILE['employees']} team
+                    - Factor in risk buffers and our 15% faster delivery advantage
                     - Provide transparent cost justification
                     """)
                 elif modal_agent == "Timeline Agent":
-                    st.markdown("""
-                    - Define project phases and milestones
-                    - Map task dependencies and critical path
-                    - Schedule resource allocation over time
-                    - Plan review and approval gates
-                    - Set realistic delivery expectations
+                    st.markdown(f"""
+                    - Define project phases using {COMPANY_PROFILE['name']}'s Agile methodology
+                    - Map task dependencies based on our proven processes
+                    - Schedule resource allocation leveraging our global team
+                    - Plan review gates with our weekly client demos
+                    - Set realistic delivery expectations with 24/7 support coverage
                     """)
                 elif modal_agent == "Legal & Compliance Agent":
-                    st.markdown("""
-                    - Review regulatory compliance requirements
-                    - Analyze contract terms and conditions
-                    - Assess legal risks and liabilities
-                    - Recommend data protection measures
-                    - Ensure industry-specific compliance
+                    st.markdown(f"""
+                    - Review compliance requirements using {COMPANY_PROFILE['name']}'s certifications
+                    - Analyze contract terms based on Fortune 500 client experience
+                    - Assess legal risks using insights from 200+ projects
+                    - Recommend data protection measures leveraging GDPR compliance
+                    - Ensure industry-specific compliance standards
                     """)
                 elif modal_agent == "Sales/Marketing Agent":
-                    st.markdown("""
-                    - Craft compelling value propositions
-                    - Highlight competitive advantages
-                    - Create executive summary content
-                    - Demonstrate ROI and business benefits
-                    - Position solution against requirements
-                    """)
-                elif modal_agent == "Proposal Orchestrator Agent (Final)":
-                    st.markdown("""
-                    - Synthesize all agent outputs into cohesive document
-                    - Ensure consistency across all sections
-                    - Address any gaps or overlaps
-                    - Create smooth narrative flow
-                    - Finalize executive summary and recommendations
+                    st.markdown(f"""
+                    - Craft value propositions highlighting {COMPANY_PROFILE['name']}'s advantages
+                    - Showcase our 99.5% client retention rate and recent awards
+                    - Create executive summary demonstrating our expertise
+                    - Demonstrate ROI based on our track record of 40% cost savings
+                    - Position {COMPANY_PROFILE['name']} as the ideal partner
                     """)
                 
                 if st.button("🚀 Run This Agent Now", key=f"modal_run_{modal_agent}", type="primary"):
@@ -1040,7 +1178,7 @@ def render_manual_langgraph_ui():
                     st.rerun()
                 break
     
-    # Completion handling
+    # Completion handling - UPDATED
     if current_agent == "completed":
         st.success("🎉 All agents have completed their work!")
         
@@ -1057,8 +1195,12 @@ def render_manual_langgraph_ui():
                 avg_words = total_words // len(st.session_state.workflow_state["agent_outputs"]) if st.session_state.workflow_state["agent_outputs"] else 0
                 st.metric("Avg Words/Section", avg_words)
         
-        if st.button("✅ Review Agent Work", type="primary"):
-            st.session_state.step = 'agent_check'
+        # NEW: Generate consolidated proposal automatically
+        if st.button("📋 Generate Final Proposal", type="primary"):
+            # Generate the final consolidated proposal
+            final_proposal = langgraph_system.generate_final_proposal(st.session_state.workflow_state)
+            st.session_state.consolidated_document = final_proposal
+            st.session_state.step = 'consolidate'
             st.rerun()
     
     # Azure OpenAI status
@@ -1129,14 +1271,16 @@ def extract_text_from_file(uploaded_file) -> str:
 
 # Azure OpenAI Parsing Functions
 def create_rfp_analysis_prompt(rfp_text: str) -> str:
-    """Create a comprehensive prompt for RFP analysis"""
-    return f"""
-You are an expert RFP analyst. Analyze the following RFP document and extract key information in a structured format.
+    """Create a comprehensive prompt for RFP analysis - UPDATED with company context"""
+    company_context = get_company_context()
+    return f"""{company_context}
+
+You are an expert RFP analyst working for {COMPANY_PROFILE['name']}. Analyze the following RFP document and extract key information that will help our specialized agents create a winning proposal.
 
 RFP Document:
 {rfp_text}
 
-Please analyze this RFP and provide a JSON response with the following structure:
+Please analyze this RFP from {COMPANY_PROFILE['name']}'s perspective and provide a JSON response with the following structure:
 
 {{
     "project_overview": {{
@@ -1145,13 +1289,13 @@ Please analyze this RFP and provide a JSON response with the following structure
         "type": "Type of project (e.g., Software Development, Infrastructure, etc.)"
     }},
     "technical_requirements": [
-        "List of technical requirements"
+        "List of technical requirements that align with our specializations"
     ],
     "functional_requirements": [
         "List of functional requirements"
     ],
     "compliance_requirements": [
-        "List of compliance and regulatory requirements"
+        "List of compliance and regulatory requirements (consider our certifications)"
     ],
     "budget_information": {{
         "budget_range": "Stated budget range if available",
@@ -1168,10 +1312,10 @@ Please analyze this RFP and provide a JSON response with the following structure
         "List of expected deliverables"
     ],
     "evaluation_criteria": [
-        "Criteria for proposal evaluation"
+        "Criteria for proposal evaluation (highlight areas where we excel)"
     ],
     "vendor_requirements": [
-        "Requirements for vendors/suppliers"
+        "Requirements for vendors/suppliers (note how we meet them)"
     ],
     "contact_information": {{
         "primary_contact": "Main contact person",
@@ -1185,11 +1329,11 @@ Please analyze this RFP and provide a JSON response with the following structure
         "How success will be measured"
     ],
     "identified_components": [
-        "Key components that need specialized attention"
+        "Key components that need specialized attention from our agents"
     ]
 }}
 
-Ensure the response is valid JSON. If any section is not found in the RFP, use an empty array [] or empty string "" as appropriate.
+Consider {COMPANY_PROFILE['name']}'s strengths and how we can position ourselves competitively. Ensure the response is valid JSON.
 """
 
 def parse_rfp_with_azure_openai(rfp_text: str, config: AzureOpenAIConfig) -> Optional[Dict]:
@@ -1206,7 +1350,7 @@ def parse_rfp_with_azure_openai(rfp_text: str, config: AzureOpenAIConfig) -> Opt
             messages=[
                 {
                     "role": "system", 
-                    "content": "You are an expert RFP analyst. Always respond with valid JSON format."
+                    "content": f"You are an expert RFP analyst working for {COMPANY_PROFILE['name']}. Always respond with valid JSON format and consider our company's competitive advantages."
                 },
                 {
                     "role": "user", 
@@ -1276,8 +1420,17 @@ def validate_parsed_data(parsed_data: Dict) -> Dict:
 
 # Updated Step 2: Azure OpenAI Parsing
 def render_azure_openai_parsing_step():
-    """Render the Azure OpenAI parsing step"""
+    """Render the Azure OpenAI parsing step - UPDATED with company context"""
     st.title("🔍 Parsing RFP Document with Azure OpenAI")
+    
+    # Add company banner
+    st.markdown(f"""
+    <div class="company-info">
+        <h3>🏢 Analysis by {COMPANY_PROFILE['name']}</h3>
+        <p>Leveraging our expertise in {COMPANY_PROFILE['industry']} to analyze your RFP</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     st.markdown(f"**Processing:** {st.session_state.rfp_name}")
     
     # Initialize Azure OpenAI config
@@ -1311,21 +1464,22 @@ def render_azure_openai_parsing_step():
     with parsing_container:
         # Check Azure OpenAI configuration
         if not config.api_key or not config.endpoint:
-            st.warning("⚠️ Azure OpenAI not configured. Using mock parsing for demonstration.")
+            st.warning(f"⚠️ Azure OpenAI not configured. Using mock parsing for {COMPANY_PROFILE['name']} demonstration.")
             
             # Fallback to mock parsing
-            st.markdown("""
+            st.markdown(f"""
             <div class="parsing-animation" style="padding: 2rem; border-radius: 10px; text-align: center; color: white; margin: 1rem 0;">
-                <h3>🤖 Mock AI Analysis (Azure OpenAI not configured)...</h3>
+                <h3>🤖 Mock AI Analysis by {COMPANY_PROFILE['name']} (Azure OpenAI not configured)...</h3>
             </div>
             """, unsafe_allow_html=True)
             
-            # Simulate progress for demo
-            progress_bar = st.progress(0)
+            # Simulate progress for demo (ensure 0.0-1.0 range)
+            progress_bar = st.progress(0.0)
             status_text = st.empty()
             
             for i in range(101):
-                progress_bar.progress(i)
+                progress_value = i / 100.0  # Convert to 0.0-1.0 range
+                progress_bar.progress(progress_value)
                 status_text.text(f"Mock parsing progress: {i}%")
                 if i % 20 == 0:
                     time.sleep(0.1)
@@ -1335,7 +1489,7 @@ def render_azure_openai_parsing_step():
                 parsed_data = {
                     "project_overview": {
                         "title": "Sample Project",
-                        "description": "Mock analysis results",
+                        "description": f"Mock analysis results by {COMPANY_PROFILE['name']}",
                         "type": "Software Development"
                     },
                     "identified_components": st.session_state.identified_components
@@ -1344,7 +1498,7 @@ def render_azure_openai_parsing_step():
                 parsed_data = {
                     "project_overview": {
                         "title": "Parsed Project",
-                        "description": "Analysis completed with mock data",
+                        "description": f"Analysis completed by {COMPANY_PROFILE['name']} with mock data",
                         "type": "Software Development"
                     },
                     "identified_components": [
@@ -1354,31 +1508,32 @@ def render_azure_openai_parsing_step():
                 }
         else:
             # Real Azure OpenAI parsing
-            st.markdown("""
+            st.markdown(f"""
             <div class="parsing-animation" style="padding: 2rem; border-radius: 10px; text-align: center; color: white; margin: 1rem 0;">
-                <h3>🧠 Analyzing your document...</h3>
+                <h3>🧠 AI analyzing your document...</h3>
             </div>
             """, unsafe_allow_html=True)
             
-            progress_bar = st.progress(0)
+            progress_bar = st.progress(0.0)
             status_text = st.empty()
             details_text = st.empty()
             
             # Parsing steps with Azure OpenAI
             parsing_steps = [
-                "Connecting to Azure OpenAI...",
+                f"Connecting to {COMPANY_PROFILE['name']}'s Azure OpenAI...",
                 "Extracting project overview...",
-                "Identifying technical requirements...",
-                "Analyzing compliance needs...",
+                "Identifying technical requirements against our expertise...",
+                "Analyzing compliance needs with our certifications...",
                 "Extracting timeline information...",
                 "Analyzing budget parameters...",
                 "Identifying deliverables...",
-                "Generating component breakdown..."
+                "Generating component breakdown for our specialist agents..."
             ]
             
-            # Show initial progress
+            # Show initial progress (ensure 0.0-1.0 range)
             for i in range(30):
-                progress_bar.progress(i)
+                progress_value = i / 100.0  # Convert to 0.0-1.0 range
+                progress_bar.progress(progress_value)
                 status_text.text(f"Preparing analysis: {i}%")
                 if i % 10 == 0 and i > 0:
                     step_index = min((i // 10) - 1, len(parsing_steps) - 1)
@@ -1386,26 +1541,27 @@ def render_azure_openai_parsing_step():
                 time.sleep(0.05)
             
             # Actual Azure OpenAI call
-            details_text.text("Calling Azure OpenAI API...")
+            details_text.text(f"Calling {COMPANY_PROFILE['name']}'s Azure OpenAI API...")
             parsed_data = parse_rfp_with_azure_openai(st.session_state.rfp_text, config)
             
             if parsed_data:
                 # Validate and clean the data
                 parsed_data = validate_parsed_data(parsed_data)
                 
-                # Complete the progress animation
+                # Complete the progress animation (ensure 0.0-1.0 range)
                 for i in range(30, 101):
-                    progress_bar.progress(i)
+                    progress_value = i / 100.0  # Convert to 0.0-1.0 range
+                    progress_bar.progress(progress_value)
                     status_text.text(f"Processing results: {i}%")
                     if i % 15 == 0:
                         step_index = min(4 + (i // 15), len(parsing_steps) - 1)
                         details_text.text(f"Step: {parsing_steps[step_index]}")
                     time.sleep(0.03)
             else:
-                st.error("❌ Failed to parse RFP with Azure OpenAI")
+                st.error(f"❌ Failed to parse RFP with {COMPANY_PROFILE['name']}'s Azure OpenAI")
                 return
         
-        st.success("✅ RFP Analysis complete! Document parsed and components identified.")
+        st.success(f"✅ RFP Analysis complete by {COMPANY_PROFILE['name']}! Document parsed and components identified.")
         
         # Store parsed data in session state
         st.session_state.parsed_rfp_data = parsed_data
@@ -1424,7 +1580,7 @@ def render_azure_openai_parsing_step():
                 if overview.get('description'):
                     st.markdown(f"**Description:** {overview['description'][:200]}...")
             
-            st.markdown("#### 🎯 Key Components Identified")
+            st.markdown(f"#### 🎯 Key Components for {COMPANY_PROFILE['name']}'s Agents")
             components = parsed_data.get('identified_components', [])
             for i, component in enumerate(components[:6]):  # Show first 6
                 st.markdown(f"✅ {component}")
@@ -1446,7 +1602,7 @@ def render_azure_openai_parsing_step():
             st.metric("Deliverables", deliverables)
         
         # Show detailed breakdown in expandable sections
-        with st.expander("🔍 Detailed Analysis Results"):
+        with st.expander(f"🔍 Detailed Analysis Results by {COMPANY_PROFILE['name']}"):
             col1, col2 = st.columns(2)
             
             with col1:
@@ -1471,14 +1627,12 @@ def render_azure_openai_parsing_step():
                 if budget.get('budget_range'):
                     st.markdown(f"• Range: {budget['budget_range']}")
         
-        if st.button("🤖 Dispatch to Agents", type="primary"):
+        if st.button(f"🤖 Dispatch to {COMPANY_PROFILE['name']} Agents", type="primary"):
             st.session_state.step = 'agent_grid'
             # Initialize first agent
             st.session_state.agents_workflow["Proposal Orchestrator Agent"]["status"] = "active"
             st.session_state.agents_workflow["Proposal Orchestrator Agent"]["progress"] = 0
             st.rerun()
-
-
 
 # Add this to your Step 1 (Upload) section for configuration help
 def add_config_help_to_upload():
@@ -1496,7 +1650,7 @@ def add_config_help_to_upload():
         st.sidebar.code("AZURE_OPENAI_API_KEY")
         st.sidebar.code("AZURE_OPENAI_ENDPOINT")
 
-# Sample RFP documents for tutorial
+# Sample RFP documents for tutorial - UPDATED with company context
 SAMPLE_DOCUMENTS = {
     "E-commerce Platform Development": {
         "filename": "ecommerce_rfp_sample.pdf",
@@ -1594,7 +1748,7 @@ SAMPLE_DOCUMENTS = {
     }
 }
 
-# Initialize session state
+# Initialize session state - UPDATED to remove final orchestrator
 if 'step' not in st.session_state:
     st.session_state.step = 'upload'
 if 'tutorial_mode' not in st.session_state:
@@ -1604,82 +1758,72 @@ if 'current_agent' not in st.session_state:
 if 'agents_workflow' not in st.session_state:
     st.session_state.agents_workflow = {
         "Proposal Orchestrator Agent": {
-            "task": "Orchestrating proposal generation and RFP breakdown",
+            "task": f"Orchestrating proposal generation for {COMPANY_PROFILE['name']}",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Analyzing RFP structure and identifying key components for specialized agents",
+            "details": f"Analyzing RFP structure and identifying key components for {COMPANY_PROFILE['name']}'s specialized agents",
             "estimated_time": "2-3 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
         },
         "Tech Lead Agent": {
-            "task": "Handling technical requirements and architecture",
+            "task": f"Technical architecture leveraging {COMPANY_PROFILE['name']}'s expertise",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Creating technical architecture, system design, and technology stack recommendations",
+            "details": f"Creating technical architecture using {COMPANY_PROFILE['name']}'s proven technology stack and AWS partnership",
             "estimated_time": "8-10 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
         },
         "Estimation Agent": {
-            "task": "Estimating effort, cost, and resource allocation",
+            "task": f"Cost estimation based on {COMPANY_PROFILE['name']}'s 200+ projects",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Calculating project costs, resource requirements, and effort estimations",
+            "details": f"Calculating project costs using {COMPANY_PROFILE['name']}'s historical data and 15% faster delivery advantage",
             "estimated_time": "5-7 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
         },
         "Timeline Agent": {
-            "task": "Creating project timeline and milestones",
+            "task": f"Project timeline using {COMPANY_PROFILE['name']}'s Agile methodology",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Developing project schedules, milestones, and dependency mapping",
+            "details": f"Developing project schedules with {COMPANY_PROFILE['name']}'s proven weekly demos and 24/7 support",
             "estimated_time": "4-6 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
         },
         "Legal & Compliance Agent": {
-            "task": "Reviewing legal clauses and compliance requirements",
+            "task": f"Legal review leveraging {COMPANY_PROFILE['name']}'s certifications",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Ensuring legal compliance, risk assessment, and contract review",
+            "details": f"Ensuring compliance using {COMPANY_PROFILE['name']}'s ISO 27001 and SOC 2 certifications",
             "estimated_time": "6-8 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
         },
         "Sales/Marketing Agent": {
-            "task": "Creating executive summary and value propositions",
+            "task": f"Value propositions highlighting {COMPANY_PROFILE['name']}'s advantages",
             "status": "pending",
             "progress": 0,
             "output": "",
-            "details": "Crafting compelling value propositions and executive summaries",
+            "details": f"Crafting compelling proposals showcasing {COMPANY_PROFILE['name']}'s 99.5% retention rate and awards",
             "estimated_time": "4-5 minutes",
             "feedback_requested": False,
             "human_feedback": "",
             "feedback_incorporated": False
-        },
-        "Proposal Orchestrator Agent (Final)": {
-            "task": "Synthesizing and refining all proposal sections",
-            "status": "pending",
-            "progress": 0,
-            "output": "",
-            "details": "Consolidating all sections and ensuring consistency across the proposal",
-            "estimated_time": "3-4 minutes",
-            "feedback_requested": False,
-            "human_feedback": "",
-            "feedback_incorporated": False
         }
+        # REMOVED: "Proposal Orchestrator Agent (Final)"
     }
 if 'consolidated_document' not in st.session_state:
     st.session_state.consolidated_document = ""
@@ -1687,16 +1831,17 @@ if 'feedback_history' not in st.session_state:
     st.session_state.feedback_history = []
 
 # Sidebar navigation
-st.sidebar.title("🚀 Proposal Generator")
+st.sidebar.title(f"🚀 {COMPANY_PROFILE['name']}")
+st.sidebar.caption(f"{COMPANY_PROFILE['industry']}")
 
 # Tutorial mode toggle
 if st.sidebar.checkbox("🎓 Tutorial Mode", value=st.session_state.tutorial_mode):
     st.session_state.tutorial_mode = True
     if st.session_state.tutorial_mode:
-        st.sidebar.markdown("""
+        st.sidebar.markdown(f"""
         <div class="tutorial-banner">
             <h4>🎓 Tutorial Mode Active</h4>
-            <p>Experience the full workflow with sample data</p>
+            <p>Experience {COMPANY_PROFILE['name']}'s workflow with sample data</p>
         </div>
         """, unsafe_allow_html=True)
 else:
@@ -1717,19 +1862,28 @@ for i, step in enumerate(steps):
 
 st.sidebar.markdown("---")
 
-# Step 1: Upload RFP document
+# Step 1: Upload RFP document - UPDATED with company context
 if st.session_state.step == 'upload':
     st.title("📄 Upload RFP Document")
     
+    # Add company banner
+    st.markdown(f"""
+    <div class="company-info">
+        <h3>🏢 Welcome to {COMPANY_PROFILE['name']}</h3>
+        <p><strong>Specializing in:</strong> {', '.join(COMPANY_PROFILE['specializations'][:3])}</p>
+        <p><strong>Track Record:</strong> {COMPANY_PROFILE['portfolio_highlights'][0]} with {COMPANY_PROFILE['portfolio_highlights'][2]}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
     if st.session_state.tutorial_mode:
-        st.markdown("""
+        st.markdown(f"""
         <div class="tutorial-banner">
-            <h3>🎓 Tutorial Mode: Sample Documents Available</h3>
-            <p>Choose from our sample RFP documents to experience the complete workflow</p>
+            <h3>🎓 Tutorial Mode: {COMPANY_PROFILE['name']} Sample Documents</h3>
+            <p>Choose from our sample RFP documents to experience {COMPANY_PROFILE['name']}'s complete workflow</p>
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown("Welcome to the AI-powered Proposal Generator! Start by uploading your RFP document or try our tutorial.")
+    st.markdown(f"Welcome to {COMPANY_PROFILE['name']}'s AI-powered Proposal Generator! Start by uploading your RFP document or try our tutorial.")
     
     col1, col2 = st.columns([2, 1])
     
@@ -1739,7 +1893,7 @@ if st.session_state.step == 'upload':
             selected_sample = st.selectbox(
                 "Select a sample RFP to explore:",
                 list(SAMPLE_DOCUMENTS.keys()),
-                help="These are realistic RFP examples to demonstrate the system"
+                help=f"These are realistic RFP examples to demonstrate {COMPANY_PROFILE['name']}'s system"
             )
             
             if selected_sample:
@@ -1749,7 +1903,7 @@ if st.session_state.step == 'upload':
                 with st.expander("📄 Preview Sample Content"):
                     st.text_area("RFP Content Preview", sample_doc['content'], height=200, disabled=True)
                 
-                if st.button("🚀 Start Tutorial with Sample", type="primary"):
+                if st.button(f"🚀 Start Tutorial with {COMPANY_PROFILE['name']}", type="primary"):
                     st.session_state.rfp_name = sample_doc['filename']
                     st.session_state.rfp_content = sample_doc['content']
                     st.session_state.identified_components = sample_doc['components']
@@ -1757,13 +1911,13 @@ if st.session_state.step == 'upload':
                     st.rerun()
         else:
             uploaded_file = st.file_uploader(
-                "Choose an RFP document", 
+                f"Choose an RFP document for {COMPANY_PROFILE['name']} to analyze", 
                 type=["pdf", "docx", "txt"],
                 help="Supported formats: PDF, DOCX, TXT"
             )
             
             if uploaded_file is not None:
-                st.success(f"✅ File uploaded: {uploaded_file.name}")
+                st.success(f"✅ File uploaded for {COMPANY_PROFILE['name']} analysis: {uploaded_file.name}")
                 st.session_state.rfp_name = uploaded_file.name
                 st.session_state.uploaded_file = uploaded_file 
                 
@@ -1777,31 +1931,38 @@ if st.session_state.step == 'upload':
                 for key, value in file_details.items():
                     st.markdown(f"- **{key}:** {value}")
                 
-                if st.button("🚀 Start Processing", type="primary"):
+                if st.button(f"🚀 Start {COMPANY_PROFILE['name']} Processing", type="primary"):
                     st.session_state.step = 'parsing'
                     st.rerun()
     
     with col2:
-        st.markdown("### 📋 What happens next?")
-        st.markdown("""
-        1. **Document Parsing** - AI analyzes your RFP
-        2. **Agent Dispatch** - Specialized agents get to work
+        st.markdown(f"### 📋 {COMPANY_PROFILE['name']}'s Process")
+        st.markdown(f"""
+        1. **Document Parsing** - Our AI analyzes your RFP
+        2. **Agent Dispatch** - {COMPANY_PROFILE['name']}'s specialized agents work
         3. **Human Feedback** - Review and guide agent work
         4. **Content Generation** - Each agent creates their section
-        5. **Quality Check** - Review and refine outputs
-        6. **Final Document** - Export your complete proposal
+        5. **Quality Check** - Review and refine outputs  
+        6. **Final Proposal** - Export your complete proposal
+        """)
+        
+        # Show company highlights
+        st.markdown(f"### 🏆 Why Choose {COMPANY_PROFILE['name']}?")
+        st.markdown(f"""
+        - **{COMPANY_PROFILE['portfolio_highlights'][0]}**
+        - **{COMPANY_PROFILE['portfolio_highlights'][2]}**
+        - **{COMPANY_PROFILE['recent_achievements'][0][:50]}...**
         """)
         
         if not st.session_state.tutorial_mode:
             st.markdown("---")
-            st.markdown("### 🎓 New to the system?")
+            st.markdown("### 🎓 New to our system?")
             if st.button("Try Tutorial Mode"):
                 st.session_state.tutorial_mode = True
                 st.rerun()
     add_config_help_to_upload()
 
 # Step 2: Parsing simulation
-# Step 2: Azure OpenAI Parsing
 elif st.session_state.step == 'parsing':
     render_azure_openai_parsing_step()
 
@@ -1809,24 +1970,23 @@ elif st.session_state.step == 'parsing':
 elif st.session_state.step == 'agent_grid':
     render_manual_langgraph_ui()
 
-
-# Step 4: Human Feedback
+# Step 4: Human Feedback - UPDATED to remove final orchestrator references
 elif st.session_state.step == 'feedback':
     st.title("💬 Provide Human Feedback")
-    st.markdown("Guide the AI agents with your expertise and domain knowledge")
+    st.markdown(f"Guide {COMPANY_PROFILE['name']}'s AI agents with your expertise and domain knowledge")
     
     # Find agents requesting feedback
     feedback_agents = {name: info for name, info in st.session_state.agents_workflow.items() 
                       if info["feedback_requested"] and not info["feedback_incorporated"]}
     
     if not feedback_agents:
-        st.info("No agents are currently requesting feedback.")
+        st.info(f"No {COMPANY_PROFILE['name']} agents are currently requesting feedback.")
         if st.button("🔙 Back to Agent Grid"):
             st.session_state.step = 'agent_grid'
             st.rerun()
     else:
         selected_feedback_agent = st.selectbox(
-            "Select agent to provide feedback:",
+            f"Select {COMPANY_PROFILE['name']} agent to provide feedback:",
             list(feedback_agents.keys()),
             format_func=lambda x: f"🔔 {x} - Requesting Feedback"
         )
@@ -1841,19 +2001,18 @@ elif st.session_state.step == 'feedback':
             st.markdown(f"**Progress:** {agent_info['progress']}%")
             st.markdown(f"**Details:** {agent_info['details']}")
             
-            # Show current work/direction
+            # Show current work/direction - UPDATED with company context
             st.markdown("### 🔍 Current Work Direction")
             current_work = {
-                "Proposal Orchestrator Agent": "Identified 6 main RFP components. Planning to dispatch technical requirements to Tech Lead Agent first, followed by parallel processing of estimation and timeline.",
-                "Tech Lead Agent": "Recommending microservices architecture with React frontend and Node.js backend. Considering AWS cloud deployment with containerization.",
-                "Estimation Agent": "Initial cost estimate at $85,000 based on 850 development hours. Factoring in 15% risk buffer and resource availability.",
-                "Timeline Agent": "Proposing 26-week timeline with 4-week planning phase, 16-week development, and 6-week testing/deployment.",
-                "Legal & Compliance Agent": "Reviewing GDPR and SOC2 requirements. Identifying standard contract terms and liability clauses.",
-                "Sales/Marketing Agent": "Focusing on scalability and modern technology stack as key value propositions. Emphasizing 10+ years experience.",
-                "Proposal Orchestrator Agent (Final)": "Planning to synthesize all sections with focus on consistency and professional presentation."
+                "Proposal Orchestrator Agent": f"Identified 6 main RFP components using {COMPANY_PROFILE['name']}'s proven analysis framework. Planning to dispatch technical requirements to Tech Lead Agent first, followed by parallel processing of estimation and timeline.",
+                "Tech Lead Agent": f"Recommending microservices architecture with React frontend and Node.js backend leveraging {COMPANY_PROFILE['name']}'s AWS Advanced Consulting Partner status. Considering containerized deployment with our proven security framework.",
+                "Estimation Agent": f"Initial cost estimate at $85,000 based on {COMPANY_PROFILE['name']}'s 200+ project database. Factoring in our 15% faster delivery advantage and 15% risk buffer.",
+                "Timeline Agent": f"Proposing 26-week timeline using {COMPANY_PROFILE['name']}'s Agile methodology with 4-week planning phase, 16-week development, and 6-week testing/deployment with weekly client demos.",
+                "Legal & Compliance Agent": f"Reviewing GDPR and SOC2 requirements leveraging {COMPANY_PROFILE['name']}'s ISO 27001 and SOC 2 Type II certifications. Identifying standard contract terms based on our Fortune 500 client experience.",
+                "Sales/Marketing Agent": f"Focusing on {COMPANY_PROFILE['name']}'s scalability advantages and modern technology stack. Emphasizing our 99.5% client retention rate and 2024 'Best Custom Software Developer' award."
             }
             
-            st.info(current_work.get(selected_feedback_agent, "Working on assigned tasks..."))
+            st.info(current_work.get(selected_feedback_agent, f"Working on assigned tasks for {COMPANY_PROFILE['name']}..."))
             
             # Feedback form
             st.markdown("### 💭 Your Feedback")
@@ -1864,7 +2023,7 @@ elif st.session_state.step == 'feedback':
             
             feedback_text = st.text_area(
                 "Provide your feedback:",
-                placeholder="Share your insights, corrections, or additional requirements...",
+                placeholder=f"Share your insights for {COMPANY_PROFILE['name']}'s proposal, corrections, or additional requirements...",
                 height=150
             )
             
@@ -1891,7 +2050,7 @@ elif st.session_state.step == 'feedback':
                     agent_info["feedback_incorporated"] = True
                     agent_info["status"] = "active"  # Resume work with feedback
                     
-                    st.success(f"✅ Feedback submitted to {selected_feedback_agent}!")
+                    st.success(f"✅ Feedback submitted to {COMPANY_PROFILE['name']}'s {selected_feedback_agent}!")
                     time.sleep(1)
                     st.session_state.step = 'agent_grid'
                     st.rerun()
@@ -1900,21 +2059,21 @@ elif st.session_state.step == 'feedback':
         
         with col2:
             st.markdown("### 📊 Feedback Guidelines")
-            st.markdown("""
+            st.markdown(f"""
             **Direction Guidance:**
-            - Suggest alternative approaches
-            - Recommend specific technologies
+            - Suggest alternative approaches for {COMPANY_PROFILE['name']}
+            - Recommend specific technologies from our stack
             - Guide architectural decisions
             
             **Technical Correction:**
             - Point out technical inaccuracies
-            - Suggest better solutions
+            - Suggest better solutions using our expertise
             - Correct assumptions
             
             **Business Insight:**
             - Share domain knowledge
             - Highlight business priorities
-            - Suggest value propositions
+            - Suggest value propositions for {COMPANY_PROFILE['name']}
             
             **Risk Concern:**
             - Identify potential risks
@@ -1934,15 +2093,17 @@ elif st.session_state.step == 'feedback':
                     </div>
                     """, unsafe_allow_html=True)
 
-# Step 5: Check Agent Work
+# Step 5: Check Agent Work - UPDATED to remove final orchestrator and add company context
 elif st.session_state.step == 'agent_check':
     st.title("✅ Review Agent Work")
-    st.markdown("Examine the output from each specialized agent and add to your proposal")
+    st.markdown(f"Examine the output from each of {COMPANY_PROFILE['name']}'s specialized agents and add to your proposal")
     
-    # Agent selector
+    # Agent selector - filter out final orchestrator if it exists
+    available_agents = [name for name in st.session_state.agents_workflow.keys() if "Final" not in name]
+    
     selected_agent = st.selectbox(
-        "Select an agent to review their work:",
-        list(st.session_state.agents_workflow.keys()),
+        f"Select a {COMPANY_PROFILE['name']} agent to review their work:",
+        available_agents,
         format_func=lambda x: f"{'✅' if st.session_state.agents_workflow[x]['status'] == 'completed' else '🔄'} {x}"
     )
     
@@ -1960,137 +2121,191 @@ elif st.session_state.step == 'agent_check':
             st.markdown("### 💭 Human Feedback Incorporated")
             st.info(f"Feedback: {agent_info['human_feedback']}")
         
-        # Generate mock output if not exists
+        # Generate mock output if not exists - UPDATED with company context
         if agent_info['output'] == "":
             mock_outputs = {
-                "Proposal Orchestrator Agent": """
-**RFP Analysis Summary**
-- Project Type: Custom Software Development
-- Key Requirements: Web application with mobile responsiveness
-- Compliance Needs: GDPR, SOC2 Type II
-- Budget Range: $50,000 - $100,000
-- Timeline: 6-8 months
-- Technical Stack: Modern web technologies required
+                "Proposal Orchestrator Agent": f"""
+**RFP Analysis Summary by {COMPANY_PROFILE['name']}**
+
+**Project Understanding:**
+- Project Type: Custom Software Development aligned with {COMPANY_PROFILE['name']}'s core specializations
+- Key Requirements: Web application with mobile responsiveness - perfect match for our expertise
+- Compliance Needs: GDPR, SOC2 Type II - leveraging our existing ISO 27001 and SOC 2 certifications
+- Budget Range: $50,000 - $100,000 - within our sweet spot for enterprise solutions
+- Timeline: 6-8 months - achievable with our 15% faster delivery track record
+
+**{COMPANY_PROFILE['name']}'s Competitive Positioning:**
+- Direct alignment with our Enterprise Software Development specialization
+- Opportunity to showcase our AWS Advanced Consulting Partner status
+- Leverage our 200+ successful projects experience
+- Highlight our 99.5% client retention rate
                 """,
-                "Tech Lead Agent": """
-**Technical Architecture Proposal**
+                "Tech Lead Agent": f"""
+**Technical Architecture Proposal by {COMPANY_PROFILE['name']}**
 
-**Recommended Technology Stack:**
-- Frontend: React.js with TypeScript
-- Backend: Node.js with Express.js
-- Database: PostgreSQL with Redis caching
-- Cloud: AWS with containerized deployment
-- Security: OAuth 2.0, JWT tokens, SSL/TLS
+**Recommended Technology Stack (Leveraging Our Expertise):**
+- Frontend: React.js with TypeScript (from our proven stack)
+- Backend: Node.js with Express.js (aligned with our specializations)
+- Database: PostgreSQL with Redis caching (enterprise-grade solutions)
+- Cloud: AWS with containerized deployment (leveraging our AWS Advanced Partner status)
+- Security: OAuth 2.0, JWT tokens, SSL/TLS (aligned with our ISO 27001 certification)
 
-**System Architecture:**
-- Microservices architecture for scalability
+**{COMPANY_PROFILE['name']}'s System Architecture:**
+- Microservices architecture for scalability (proven in our 200+ projects)
 - RESTful API design with GraphQL for complex queries
-- Automated CI/CD pipeline with testing
-- Monitoring and logging with CloudWatch
+- Automated CI/CD pipeline with testing (part of our DevOps specialization)
+- Monitoring and logging with CloudWatch (AWS partnership benefits)
+- 99.9% uptime guarantee backed by our track record
+
+**Security Implementation:**
+- Leveraging our SOC 2 Type II compliance expertise
+- End-to-end encryption protocols
+- Multi-factor authentication integration
                 """,
-                "Estimation Agent": """
-**Project Estimation Breakdown**
+                "Estimation Agent": f"""
+**Project Estimation by {COMPANY_PROFILE['name']}**
 
-**Development Effort:**
-- Frontend Development: 320 hours ($32,000)
-- Backend Development: 280 hours ($28,000)
-- Database Design: 80 hours ($8,000)
-- Testing & QA: 120 hours ($12,000)
-- DevOps & Deployment: 60 hours ($6,000)
+**Development Effort (Based on Our 200+ Project Database):**
+- Frontend Development: 320 hours ($32,000) - optimized with our React expertise
+- Backend Development: 280 hours ($28,000) - efficient with our Node.js specialization
+- Database Design: 80 hours ($8,000) - streamlined with our enterprise experience
+- Testing & QA: 120 hours ($12,000) - comprehensive with our proven methodologies
+- DevOps & Deployment: 60 hours ($6,000) - accelerated with our AWS partnership
 
-**Total Estimated Cost: $86,000**
-**Timeline: 26 weeks (6.5 months)**
-**Risk Buffer: 15% ($12,900)**
+**{COMPANY_PROFILE['name']} Value Proposition:**
+- **Total Estimated Cost: $86,000** (competitive pricing)
+- **Timeline: 22 weeks** (15% faster than industry standard)
+- **Risk Buffer: 10%** (reduced due to our proven track record)
+- **Post-launch Support: 6 months included** (part of our 24/7 global coverage)
+
+**Cost Advantages:**
+- 15% faster delivery = reduced total cost
+- Proprietary frameworks reduce development time
+- AWS partnership provides infrastructure cost savings
                 """,
-                "Timeline Agent": """
-**Project Timeline & Milestones**
+                "Timeline Agent": f"""
+**Project Timeline by {COMPANY_PROFILE['name']}**
 
-**Phase 1: Planning & Design (Weeks 1-4)**
-- Requirements analysis
-- System design
-- UI/UX mockups
+**{COMPANY_PROFILE['name']}'s Proven Agile Methodology:**
 
-**Phase 2: Development (Weeks 5-20)**
-- Sprint 1-4: Core functionality
-- Sprint 5-8: Advanced features
-- Sprint 9-12: Integration & testing
+**Phase 1: Planning & Design (Weeks 1-3)**
+- Requirements analysis using our proven framework
+- System design leveraging our architectural expertise
+- UI/UX mockups with our design team
+- Weekly client demos (signature {COMPANY_PROFILE['name']} approach)
 
-**Phase 3: Testing & Deployment (Weeks 21-26)**
-- User acceptance testing
-- Performance optimization
-- Production deployment
-- Knowledge transfer
+**Phase 2: Development (Weeks 4-18)**
+- Sprint 1-4: Core functionality development
+- Sprint 5-8: Advanced features implementation  
+- Sprint 9-12: Integration & API development
+- Sprint 13-15: Testing & optimization
+- **Weekly demos and feedback sessions** (our proven engagement model)
+
+**Phase 3: Deployment & Launch (Weeks 19-22)**
+- User acceptance testing with client team
+- Performance optimization and security hardening
+- Production deployment with AWS best practices
+- Knowledge transfer and documentation
+- Go-live support with our 24/7 coverage
+
+**{COMPANY_PROFILE['name']}'s Timeline Advantages:**
+- 15% faster delivery than industry standard
+- Weekly client engagement reduces late-stage changes
+- Proven risk mitigation strategies from 200+ projects
                 """,
-                "Legal & Compliance Agent": """
-**Legal & Compliance Assessment**
+                "Legal & Compliance Agent": f"""
+**Legal & Compliance Assessment by {COMPANY_PROFILE['name']}**
 
-**Contract Terms:**
-- Intellectual property rights clearly defined
-- Data protection clauses included
-- Liability limitations standard
-- Payment terms: 30% upfront, 40% at milestone, 30% completion
+**Contract Terms (Based on Our Fortune 500 Experience):**
+- Intellectual property rights clearly defined per our standard agreements
+- Data protection clauses leveraging our GDPR compliance expertise  
+- Liability limitations based on our insurance and legal framework
+- Payment terms: 30% upfront, 40% at milestone, 30% completion (our proven structure)
 
-**Compliance Requirements:**
-- GDPR compliance for EU users
-- SOC2 Type II certification required
-- Regular security audits
-- Data encryption at rest and in transit
+**Compliance Requirements (Leveraging Our Certifications):**
+- **GDPR compliance** - {COMPANY_PROFILE['name']} is fully GDPR compliant
+- **SOC2 Type II certification** - we maintain active certification
+- **ISO 27001 compliance** - part of our core security framework
+- Regular security audits (quarterly internal, annual external)
+- Data encryption at rest and in transit (standard in all our projects)
 
-**Risk Assessment: LOW**
+**{COMPANY_PROFILE['name']}'s Legal Advantages:**
+- **Risk Assessment: LOW** (due to our proven compliance track record)
+- Existing insurance coverage for all project types
+- Legal framework tested across 200+ successful projects
+- Established relationships with compliance auditors
+- Template agreements refined through Fortune 500 engagements
+
+**Regulatory Expertise:**
+- Financial services compliance (for payment processing)
+- Healthcare data protection (HIPAA experience)
+- International data transfer protocols
                 """,
-                "Sales/Marketing Agent": """
-**Executive Summary & Value Proposition**
+                "Sales/Marketing Agent": f"""
+**Executive Summary & Value Proposition by {COMPANY_PROFILE['name']}**
 
-**Why Choose Our Solution:**
-- 10+ years of experience in custom software development
-- Proven track record with 200+ successful projects
-- Agile methodology ensuring transparency and flexibility
-- 24/7 support and maintenance included
+**Why Choose {COMPANY_PROFILE['name']} for Your Project:**
 
-**Key Benefits:**
-- Scalable architecture supporting future growth
+**Proven Track Record:**
+- **{COMPANY_PROFILE['portfolio_highlights'][0]}** across diverse industries
+- **{COMPANY_PROFILE['portfolio_highlights'][2]}** - demonstrating client satisfaction
+- **{COMPANY_PROFILE['recent_achievements'][0]}** - industry recognition
+
+**Technical Excellence:**
+- **{COMPANY_PROFILE['specializations'][0]}** - perfect match for your requirements
+- **AWS Advanced Consulting Partner** - ensuring optimal cloud solutions
+- **ISO 27001 & SOC 2 Type II certified** - guaranteeing security and compliance
+- Modern technology stack with proven scalability
+
+**Competitive Advantages:**
+- **15% faster development** using our proprietary frameworks and methodologies
+- **99.9% uptime guarantee** with our hosting and support solution
+- **24/7 global support coverage** across our international offices
+- **Weekly client demos** ensuring transparency and alignment
+
+**Business Benefits:**
+- Scalable architecture supporting future growth (tested in 200+ projects)
 - Modern, responsive design for optimal user experience
 - Robust security measures protecting sensitive data
-- Comprehensive testing ensuring reliability
+- Comprehensive testing ensuring reliability and performance
 
-**Competitive Advantage:**
-- 40% faster development using our proprietary frameworks
-- 99.9% uptime guarantee with our hosting solution
-                """,
-                "Proposal Orchestrator Agent (Final)": """
-**Final Proposal Synthesis**
+**{COMPANY_PROFILE['name']}'s Unique Value:**
+- **40% operational cost savings** for clients (proven across our portfolio)
+- **99.5% client retention rate** - clients stay with us long-term
+- **End-to-end solution delivery** - from concept to post-launch support
+- **AI-assisted development frameworks** - cutting-edge efficiency
 
-This comprehensive proposal addresses all requirements outlined in your RFP. Our solution combines cutting-edge technology with proven methodologies to deliver a robust, scalable web application.
+**Investment Protection:**
+- Fixed-price proposal with no hidden costs
+- 6-month post-launch support included
+- Future enhancement roadmap provided
+- Knowledge transfer ensuring client independence
 
-**Key Highlights:**
-- Complete technical solution with modern architecture
-- Realistic timeline with built-in risk mitigation
-- Competitive pricing with transparent breakdown
-- Full compliance with legal and regulatory requirements
+**Next Steps with {COMPANY_PROFILE['name']}:**
+1. Proposal review and technical deep-dive session
+2. Contract negotiation with our legal team
+3. Project kickoff with dedicated team introduction
+4. Development commencement with immediate weekly demos
 
-**Next Steps:**
-1. Proposal review and feedback
-2. Contract negotiation and signing
-3. Project kickoff and team introduction
-4. Development commencement
+*Partner with {COMPANY_PROFILE['name']} - where innovation meets reliability.*
                 """
             }
             
             # Incorporate feedback into output if available
-            base_output = mock_outputs.get(selected_agent, "No output available.")
+            base_output = mock_outputs.get(selected_agent, f"No output available from {COMPANY_PROFILE['name']} agent.")
             if agent_info['human_feedback']:
-                base_output += f"\n\n**Note:** This output has been refined based on your feedback: {agent_info['human_feedback'][:100]}..."
+                base_output += f"\n\n**Note:** This output has been refined by {COMPANY_PROFILE['name']} based on your feedback: {agent_info['human_feedback'][:100]}..."
             
             agent_info['output'] = base_output
         
-        st.markdown("### 📄 Agent Output")
+        st.markdown(f"### 📄 {selected_agent} Output")
         st.markdown(agent_info['output'])
         
         # Feedback option for completed work
         if agent_info['status'] == 'completed':
             with st.expander("💬 Provide Additional Feedback"):
                 additional_feedback = st.text_area(
-                    "Any additional feedback for this output?",
+                    f"Any additional feedback for this {COMPANY_PROFILE['name']} output?",
                     placeholder="Suggest improvements, corrections, or additions..."
                 )
                 if st.button(f"📤 Submit Additional Feedback for {selected_agent}"):
@@ -2108,9 +2323,9 @@ This comprehensive proposal addresses all requirements outlined in your RFP. Our
         if st.button(f"✅ Add {selected_agent} output to proposal", type="primary"):
             if f"### {selected_agent}" not in st.session_state.consolidated_document:
                 st.session_state.consolidated_document += f"\n\n## {selected_agent}\n{agent_info['output']}"
-                st.success(f"✅ Added output from {selected_agent} to consolidated document.")
+                st.success(f"✅ Added output from {COMPANY_PROFILE['name']}'s {selected_agent} to consolidated document.")
             else:
-                st.warning("This agent's output is already in the consolidated document.")
+                st.warning(f"This {COMPANY_PROFILE['name']} agent's output is already in the consolidated document.")
     
     with col2:
         st.markdown("### 📊 Agent Status")
@@ -2122,8 +2337,8 @@ This comprehensive proposal addresses all requirements outlined in your RFP. Our
             st.success("✅ Human feedback provided")
         
         # Show which outputs are already added
-        st.markdown("### 📋 Added to Proposal")
-        for agent_name in st.session_state.agents_workflow.keys():
+        st.markdown(f"### 📋 Added to {COMPANY_PROFILE['name']} Proposal")
+        for agent_name in available_agents:  # Use filtered list
             if f"### {agent_name}" in st.session_state.consolidated_document:
                 st.markdown(f"✅ {agent_name}")
             else:
@@ -2131,144 +2346,135 @@ This comprehensive proposal addresses all requirements outlined in your RFP. Our
     
     st.markdown("---")
     
-    # Check if all outputs are added
-    added_count = sum(1 for agent_name in st.session_state.agents_workflow.keys() 
+    # Check if all outputs are added - UPDATED count
+    added_count = sum(1 for agent_name in available_agents 
                      if f"### {agent_name}" in st.session_state.consolidated_document)
     
-    if added_count == len(st.session_state.agents_workflow):
-        st.success("🎉 All agent outputs have been added to the proposal!")
+    if added_count == len(available_agents):
+        st.success(f"🎉 All {COMPANY_PROFILE['name']} agent outputs have been added to the proposal!")
     
-    if st.button("📋 Proceed to Consolidate Document", type="primary"):
+    if st.button(f"📋 Proceed to Consolidate {COMPANY_PROFILE['name']} Proposal", type="primary"):
         st.session_state.step = 'consolidate'
         st.rerun()
 
-# Step 6: Consolidate and Export
+# Step 6: Consolidate and Export - UPDATED with company context and auto-generation
 elif st.session_state.step == 'consolidate':
     st.title("📋 Consolidate and Export Proposal")
-    st.markdown("Review your complete proposal document and export it")
+    st.markdown(f"Review your complete {COMPANY_PROFILE['name']} proposal document and export it")
     
+    # Auto-generate final proposal if not already done
     if st.session_state.consolidated_document.strip() == "":
-        st.warning("⚠️ No content in consolidated document. Please add outputs from agents first.")
-        if st.button("⬅️ Go Back to Review"):
-            st.session_state.step = 'agent_check'
-            st.rerun()
-    else:
-        # Document preview
-        st.markdown("### 📄 Proposal Document Preview")
+        st.info(f"🔄 Auto-generating final proposal from {COMPANY_PROFILE['name']} agents...")
         
-        # Add header to document
-        header = f"""# Proposal Response to RFP: {st.session_state.get('rfp_name', 'Your Project')}
-
-**Generated on:** {datetime.now().strftime('%B %d, %Y at %I:%M %p')}
-**Generated by:** AI Proposal Generator System
-**Human Feedback Sessions:** {len(st.session_state.feedback_history)}
-
----
-"""
-        
-        # Add feedback summary if any
-        if st.session_state.feedback_history:
-            feedback_summary = "\n## Human Feedback Integration Summary\n"
-            feedback_summary += f"This proposal incorporates {len(st.session_state.feedback_history)} human feedback sessions:\n"
-            for feedback in st.session_state.feedback_history:
-                feedback_summary += f"- {feedback['agent']}: {feedback['type']} ({feedback['priority']} priority)\n"
-            feedback_summary += "\n---\n"
+        # Get the LangGraph system and generate final proposal
+        langgraph_system = get_simple_langgraph_system()
+        if hasattr(st.session_state, 'workflow_state') and st.session_state.workflow_state["agent_outputs"]:
+            final_proposal = langgraph_system.generate_final_proposal(st.session_state.workflow_state)
+            st.session_state.consolidated_document = final_proposal
+            st.success(f"✅ Final {COMPANY_PROFILE['name']} proposal generated automatically!")
         else:
-            feedback_summary = ""
-        
-        full_document = header + feedback_summary + st.session_state.consolidated_document
-        
-        # Show document in expandable text area
-        st.text_area(
-            "Complete Proposal Document", 
-            value=full_document, 
-            height=400,
-            help="This is your complete proposal document ready for export"
-        )
-        
-        # Document statistics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            word_count = len(full_document.split())
-            st.metric("Word Count", word_count)
-        with col2:
-            char_count = len(full_document)
-            st.metric("Characters", char_count)
-        with col3:
-            section_count = full_document.count('##')
-            st.metric("Sections", section_count)
-        with col4:
-            feedback_count = len(st.session_state.feedback_history)
-            st.metric("Feedback Sessions", feedback_count)
-        
-        st.markdown("---")
-        
-        # Export options
-        st.markdown("### 📤 Export Options")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Text export
-            def convert_text_to_file(text):
-                return text.encode('utf-8')
-            
-            proposal_bytes = convert_text_to_file(full_document)
-            
-            st.download_button(
-                label="📄 Download as Text File",
-                data=proposal_bytes,
-                file_name=f"proposal_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                mime="text/plain",
-                type="primary"
-            )
-        
-        with col2:
-            # Markdown export
-            st.download_button(
-                label="📝 Download as Markdown",
-                data=proposal_bytes,
-                file_name=f"proposal_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
-                mime="text/markdown"
-            )
-        
-        # Feedback export
-        if st.session_state.feedback_history:
-            st.markdown("### 💭 Export Feedback History")
-            feedback_df = pd.DataFrame(st.session_state.feedback_history)
-            csv_data = feedback_df.to_csv(index=False).encode('utf-8')
-            
-            st.download_button(
-                label="📊 Download Feedback History (CSV)",
-                data=csv_data,
-                file_name=f"feedback_history_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-        
-        st.markdown("---")
-        
-        # Workflow completion
-        st.success("🎉 Proposal generation completed successfully!")
-        
-        if st.session_state.tutorial_mode:
-            st.info("🎓 Tutorial completed! You've experienced the full workflow with human feedback integration.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Start New Proposal", type="primary"):
-                # Reset all session state
-                for key in list(st.session_state.keys()):
-                    if key not in ['tutorial_mode']:  # Keep tutorial mode setting
-                        del st.session_state[key]
+            st.warning(f"⚠️ No content from {COMPANY_PROFILE['name']} agents available. Please run agents first.")
+            if st.button("⬅️ Go Back to Agent Grid"):
+                st.session_state.step = 'agent_grid'
                 st.rerun()
+            
+    
+    # Document preview
+    st.markdown(f"### 📄 {COMPANY_PROFILE['name']} Proposal Document Preview")
+    
+    full_document = st.session_state.consolidated_document
+    
+    # Show document in expandable text area
+    st.text_area(
+        f"Complete {COMPANY_PROFILE['name']} Proposal Document", 
+        value=full_document, 
+        height=400,
+        help=f"This is your complete proposal document from {COMPANY_PROFILE['name']} ready for export"
+    )
+    
+    # Document statistics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        word_count = len(full_document.split())
+        st.metric("Word Count", word_count)
+    with col2:
+        char_count = len(full_document)
+        st.metric("Characters", char_count)
+    with col3:
+        section_count = full_document.count('##')
+        st.metric("Sections", section_count)
+    with col4:
+        feedback_count = len(st.session_state.feedback_history)
+        st.metric("Feedback Sessions", feedback_count)
+    
+    st.markdown("---")
+    
+    # Export options
+    st.markdown("### 📤 Export Options")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Text export
+        def convert_text_to_file(text):
+            return text.encode('utf-8')
         
-        with col2:
-            if st.button("📧 Share Feedback"):
-                st.info("Thank you for using the AI Proposal Generator! Your feedback helps us improve.")
+        proposal_bytes = convert_text_to_file(full_document)
+        
+        st.download_button(
+            label="📄 Download as Text File",
+            data=proposal_bytes,
+            file_name=f"{COMPANY_PROFILE['name'].lower().replace(' ', '_')}_proposal_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            mime="text/plain",
+            type="primary"
+        )
+    
+    with col2:
+        # Markdown export
+        st.download_button(
+            label="📝 Download as Markdown",
+            data=proposal_bytes,
+            file_name=f"{COMPANY_PROFILE['name'].lower().replace(' ', '_')}_proposal_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+            mime="text/markdown"
+        )
+    
+    # Feedback export
+    if st.session_state.feedback_history:
+        st.markdown("### 💭 Export Feedback History")
+        feedback_df = pd.DataFrame(st.session_state.feedback_history)
+        csv_data = feedback_df.to_csv(index=False).encode('utf-8')
+        
+        st.download_button(
+            label="📊 Download Feedback History (CSV)",
+            data=csv_data,
+            file_name=f"{COMPANY_PROFILE['name'].lower().replace(' ', '_')}_feedback_history_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv"
+        )
+    
+    st.markdown("---")
+    
+    # Workflow completion
+    st.success(f"🎉 {COMPANY_PROFILE['name']} proposal generation completed successfully!")
+    
+    if st.session_state.tutorial_mode:
+        st.info(f"🎓 Tutorial completed! You've experienced {COMPANY_PROFILE['name']}'s full workflow with human feedback integration.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(f"🔄 Start New {COMPANY_PROFILE['name']} Proposal", type="primary"):
+            # Reset all session state
+            for key in list(st.session_state.keys()):
+                if key not in ['tutorial_mode']:  # Keep tutorial mode setting
+                    del st.session_state[key]
+            st.rerun()
+    
+    with col2:
+        if st.button(f"📧 Share Feedback about {COMPANY_PROFILE['name']}"):
+            st.info(f"Thank you for using {COMPANY_PROFILE['name']}'s AI Proposal Generator! Your feedback helps us improve our services.")
 
-# Sidebar status
+# Sidebar status - UPDATED with company context
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📊 Session Info")
+st.sidebar.markdown(f"### 📊 {COMPANY_PROFILE['name']} Session Info")
 if 'rfp_name' in st.session_state:
     st.sidebar.markdown(f"**RFP:** {st.session_state.rfp_name}")
 
@@ -2277,8 +2483,9 @@ st.sidebar.markdown(f"**Time:** {current_time}")
 
 if st.session_state.step in ['agent_grid', 'feedback', 'agent_check', 'consolidate']:
     completed_agents = sum(1 for agent in st.session_state.agents_workflow.values() if agent["status"] == "completed")
-    total_agents = len(st.session_state.agents_workflow)
-    st.sidebar.progress(completed_agents / total_agents, text=f"Agents: {completed_agents}/{total_agents}")
+    total_agents = len([name for name in st.session_state.agents_workflow.keys() if "Final" not in name])  # Exclude final orchestrator
+    progress_value = completed_agents / total_agents if total_agents > 0 else 0.0  # Ensure 0.0-1.0 range
+    st.sidebar.progress(progress_value, text=f"Agents: {completed_agents}/{total_agents}")
 
 # Feedback status in sidebar
 if st.session_state.feedback_history:
@@ -2288,3 +2495,13 @@ if st.session_state.feedback_history:
     feedback_pending = sum(1 for agent in st.session_state.agents_workflow.values() if agent["feedback_requested"] and not agent["feedback_incorporated"])
     if feedback_pending > 0:
         st.sidebar.warning(f"🔔 {feedback_pending} agents need feedback")
+
+# Company info in sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### 🏢 {COMPANY_PROFILE['name']}")
+st.sidebar.markdown(f"**Industry:** {COMPANY_PROFILE['industry']}")
+st.sidebar.markdown(f"**Founded:** {COMPANY_PROFILE['founded']}")
+st.sidebar.markdown(f"**Team:** {COMPANY_PROFILE['employees']}")
+with st.sidebar.expander("🏆 Our Achievements"):
+    for achievement in COMPANY_PROFILE['recent_achievements'][:2]:
+        st.sidebar.markdown(f"• {achievement}")
