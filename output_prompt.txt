@@ -1,0 +1,1001 @@
+rfp_automation/agents/budget_agent.py
+---
+ 1  from typing import Dict, List
+ 2  
+ 3  from ..workflow.state import EnhancedRFPState
+ 4  
+ 5  
+ 6  class EnhancedBudgetAgent:
+ 7      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 8          """Enhanced budget estimation using market research"""
+ 9          parsed = state["parsed_requirements"]
+10          market_research = state.get("market_research", {})
+11          cached_knowledge = state.get("cached_knowledge", [])
+12  
+13          # Base calculation
+14          base_cost = 50000
+15          scale_multiplier = parsed.get("scale", 1000) / 1000
+16          platform_multiplier = len(parsed.get("platform", ["web"])) * 0.5 + 0.5
+17  
+18          # Market adjustment factor from research
+19          market_adjustment = self._calculate_market_adjustment(
+20              market_research, cached_knowledge
+21          )
+22  
+23          estimated_cost = (
+24              base_cost * scale_multiplier * platform_multiplier * market_adjustment
+25          )
+26  
+27          budget_estimate = {
+28              "development_cost": estimated_cost,
+29              "monthly_hosting": estimated_cost * 0.02,
+30              "maintenance_yearly": estimated_cost * 0.2,
+31              "total_first_year": estimated_cost * 1.44,
+32              "market_adjustment_factor": market_adjustment,
+33              "market_insights_used": len(market_research.get("market_trends", [])),
+34              "cached_insights_used": len(cached_knowledge),
+35          }
+36  
+37          state["budget_estimate"] = budget_estimate
+38          return state
+39  
+40      def _calculate_market_adjustment(
+41          self, market_research: Dict, cached_knowledge: List
+42      ) -> float:
+43          """Calculate market-based adjustment factor"""
+44          adjustment = 1.0
+45  
+46          # Analyze market trends for cost indicators
+47          trends = market_research.get("market_trends", [])
+48          for trend in trends:
+49              trend_lower = trend.lower()
+50              if any(
+51                  keyword in trend_lower for keyword in ["expensive", "costly", "premium"]
+52              ):
+53                  adjustment += 0.1
+54              elif any(
+55                  keyword in trend_lower
+56                  for keyword in ["affordable", "cost-effective", "budget"]
+57              ):
+58                  adjustment -= 0.05
+59  
+60          # Use cached knowledge for historical context
+61          for knowledge in cached_knowledge:
+62              if knowledge.get("relevance_score", 0) > 0.8:
+63                  content = knowledge.get("content", "").lower()
+64                  if "cost increase" in content or "price rise" in content:
+65                      adjustment += 0.05
+66  
+67          return max(0.7, min(1.5, adjustment))  # Cap between 70% and 150%
+
+---
+rfp_automation/agents/knowledge_management.py
+---
+  1  from datetime import datetime
+  2  from typing import Any, Dict, List
+  3  from uuid import uuid4
+  4  
+  5  import chromadb
+  6  import chromadb.utils.embedding_functions as ef
+  7  from langchain.text_splitter import RecursiveCharacterTextSplitter
+  8  from langchain_core.documents import Document
+  9  from langchain_google_genai import GoogleGenerativeAIEmbeddings
+ 10  
+ 11  from ..config.settings import get_settings
+ 12  from ..workflow.state import EnhancedRFPState
+ 13  
+ 14  settings = get_settings()
+ 15  
+ 16  
+ 17  class KnowledgeManagementAgent:
+ 18      def __init__(self, persist_directory: str = "./chroma_db"):
+ 19          self.persist_directory = persist_directory
+ 20          self.embedding_function = ef.GoogleGenerativeAiEmbeddingFunction(
+ 21              api_key=settings.GOOGLE_API_KEY
+ 22          )
+ 23          self.text_splitter = RecursiveCharacterTextSplitter(
+ 24              chunk_size=1000, chunk_overlap=200
+ 25          )
+ 26          self.collection_name = "rfp_knowledge_base"
+ 27          self.vector_store = self._initialize_vector_store()
+ 28  
+ 29      def _initialize_vector_store(self):
+ 30          """Initialize ChromaDB with persistence"""
+ 31  
+ 32          client = chromadb.PersistentClient(path=self.persist_directory)
+ 33          try:
+ 34              return client.get_collection(self.collection_name)
+ 35          except ValueError:
+ 36              return client.create_collection(
+ 37                  name=self.collection_name,
+ 38                  embedding_function=self.embedding_function,  # type:ignore
+ 39              )
+ 40  
+ 41      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 42          """Retrieve relevant knowledge and cache new information"""
+ 43          parsed = state["parsed_requirements"]
+ 44          market_research = state.get("market_research", {})
+ 45  
+ 46          # Search existing knowledge base
+ 47          query = f"{parsed.get('domain')} {parsed.get('scale')} users requirements"
+ 48          cached_results = self._search_knowledge_base(query)
+ 49  
+ 50          # Cache new market research data
+ 51          if market_research and not market_research.get("error"):
+ 52              self._cache_market_research(market_research, parsed)
+ 53  
+ 54          state["cached_knowledge"] = cached_results
+ 55          return state
+ 56  
+ 57      def _search_knowledge_base(self, query: str, k: int = 3) -> List[Dict]:
+ 58          """Search ChromaDB for relevant cached knowledge"""
+ 59          try:
+ 60              if self.vector_store.count() == 0:
+ 61                  return []
+ 62  
+ 63              results = self.vector_store.query(query_texts=query, n_results=k)
+ 64  
+ 65              formatted_results = []
+ 66              for doc, score in results:
+ 67                  formatted_results.append(
+ 68                      {
+ 69                          "content": doc,
+ 70                          "relevance_score": float(score),
+ 71                          "source": "knowledge_base",
+ 72                      }
+ 73                  )
+ 74  
+ 75              return formatted_results
+ 76          except Exception as e:
+ 77              return []
+ 78  
+ 79      def _cache_market_research(self, market_research: Dict, requirements: Dict):
+ 80          """Cache market research data in ChromaDB"""
+ 81          try:
+ 82              documents = []
+ 83  
+ 84              # Cache market trends
+ 85              for trend in market_research.get("market_trends", []):
+ 86                  doc = Document(
+ 87                      page_content=trend,
+ 88                      metadata={
+ 89                          "type": "market_trend",
+ 90                          "domain": requirements.get("domain"),
+ 91                          "timestamp": datetime.now().isoformat(),
+ 92                          "source": "tavily_search",
+ 93                      },
+ 94                  )
+ 95                  documents.append(doc)
+ 96  
+ 97              # Cache vendor insights
+ 98              for insight in market_research.get("vendor_landscape", []):
+ 99                  doc = Document(
+100                      page_content=insight,
+101                      metadata={
+102                          "type": "vendor_insight",
+103                          "domain": requirements.get("domain"),
+104                          "timestamp": datetime.now().isoformat(),
+105                          "source": "tavily_search",
+106                      },
+107                  )
+108                  documents.append(doc)
+109  
+110              if documents:
+111                  # Split long documents
+112                  split_docs = self.text_splitter.split_documents(documents)
+113                  self.vector_store.add(
+114                      ids=[str(uuid4()) for x in range(len(split_docs))],
+115                      documents=list(map(lambda doc: doc.page_content, split_docs)),
+116                  )
+117  
+118          except Exception as e:
+119              # Log error but don't fail the workflow
+120              pass
+
+---
+rfp_automation/agents/market_research.py
+---
+  1  import time
+  2  from datetime import datetime
+  3  from typing import Dict, List
+  4  
+  5  from langchain_community.retrievers import TavilySearchAPIRetriever
+  6  from tavily import TavilyClient
+  7  
+  8  from ..workflow.state import EnhancedRFPState
+  9  
+ 10  
+ 11  class MarketResearchAgent:
+ 12      def __init__(self, tavily_api_key: str):
+ 13  
+ 14          self.tavily_client = TavilyClient(api_key=tavily_api_key)
+ 15          self.retriever = TavilySearchAPIRetriever(
+ 16              api_key=tavily_api_key, k=5, include_raw_content=True
+ 17          )
+ 18  
+ 19      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 20          """Conduct market research using Tavily Search"""
+ 21          parsed = state["parsed_requirements"]
+ 22          domain = parsed.get("domain", "software")
+ 23          scale = parsed.get("scale", 1000)
+ 24  
+ 25          try:
+ 26              # Search for market trends and pricing
+ 27              market_query = (
+ 28                  f"{domain} software development costs 2025 {scale} users pricing"
+ 29              )
+ 30              market_results = self._search_with_retry(market_query)
+ 31  
+ 32              # Search for vendor landscape
+ 33              vendor_query = f"top {domain} software development companies 2025 reviews"
+ 34              vendor_results = self._search_with_retry(vendor_query)
+ 35  
+ 36              # Search for technology trends
+ 37              tech_query = f"{domain} technology stack trends 2025 best practices"
+ 38              tech_results = self._search_with_retry(tech_query)
+ 39  
+ 40              market_research = {
+ 41                  "market_trends": self._extract_insights(market_results),
+ 42                  "vendor_landscape": self._extract_insights(vendor_results),
+ 43                  "technology_trends": self._extract_insights(tech_results),
+ 44                  "search_timestamp": datetime.now().isoformat(),
+ 45                  "queries_performed": [market_query, vendor_query, tech_query],
+ 46              }
+ 47  
+ 48              state["market_research"] = market_research
+ 49              state["search_metadata"] = {
+ 50                  "total_searches": 3,
+ 51                  "search_duration": "real-time",
+ 52                  "sources_found": len(market_results)
+ 53                  + len(vendor_results)
+ 54                  + len(tech_results),
+ 55              }
+ 56  
+ 57          except Exception as e:
+ 58              # Fallback to cached data or default values
+ 59              state["market_research"] = {
+ 60                  "error": str(e),
+ 61                  "fallback_used": True,
+ 62                  "market_trends": [
+ 63                      "Cloud-native architecture trending",
+ 64                      "Microservices adoption increasing",
+ 65                  ],
+ 66                  "vendor_landscape": [
+ 67                      "Established players dominate",
+ 68                      "Emerging startups offer innovation",
+ 69                  ],
+ 70                  "technology_trends": [
+ 71                      "AI integration standard",
+ 72                      "Security-first development",
+ 73                  ],
+ 74              }
+ 75  
+ 76          return state
+ 77  
+ 78      def _search_with_retry(self, query: str, max_retries: int = 3) -> List[Dict]:
+ 79          """Search with retry logic and rate limiting"""
+ 80          for attempt in range(max_retries):
+ 81              try:
+ 82                  results = self.tavily_client.search(
+ 83                      query=query,
+ 84                      search_depth="advanced",
+ 85                      max_results=3,
+ 86                      include_domains=[
+ 87                          "techcrunch.com",
+ 88                          "stackoverflow.com",
+ 89                          "github.com",
+ 90                      ],
+ 91                      exclude_domains=["spam-site.com"],
+ 92                  )
+ 93                  return results.get("results", [])
+ 94              except Exception as e:
+ 95                  if attempt == max_retries - 1:
+ 96                      raise e
+ 97                  time.sleep(2**attempt)  # Exponential backoff
+ 98          return []
+ 99  
+100      def _extract_insights(self, search_results: List[Dict]) -> List[str]:
+101          """Extract key insights from search results"""
+102          insights = []
+103          for result in search_results[:3]:  # Top 3 results
+104              content = result.get("content", "")
+105              title = result.get("title", "")
+106  
+107              # Simple insight extraction (can be enhanced with NLP)
+108              if any(
+109                  keyword in content.lower() for keyword in ["cost", "price", "budget"]
+110              ):
+111                  insights.append(f"Market insight from {title}: {content[:200]}...")
+112  
+113          return insights or ["No specific market insights found"]
+
+---
+rfp_automation/agents/nlp_parser.py
+---
+  1  from datetime import datetime
+  2  from typing import Dict, List
+  3  
+  4  from ..workflow.state import EnhancedRFPState
+  5  
+  6  
+  7  class NLPParserAgent:
+  8      def __init__(self):
+  9          self.keywords = {
+ 10              "domain": ["logistics", "tracking", "mobile", "app", "web", "platform"],
+ 11              "scale": ["users", "scalable", "concurrent", "load"],
+ 12              "platform": ["mobile", "web", "desktop", "ios", "android"],
+ 13              "features": ["real-time", "analytics", "dashboard", "reporting"],
+ 14          }
+ 15  
+ 16      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 17          """Extract structured requirements from user input"""
+ 18          user_input = state["user_input"].lower()
+ 19  
+ 20          parsed = {
+ 21              "domain": self._extract_domain(user_input),
+ 22              "scale": self._extract_scale(user_input),
+ 23              "platform": self._extract_platform(user_input),
+ 24              "features": self._extract_features(user_input),
+ 25          }
+ 26  
+ 27          state["parsed_requirements"] = parsed
+ 28          state["audit_log"].append(
+ 29              {
+ 30                  "timestamp": datetime.now().isoformat(),
+ 31                  "agent": "NLPParser",
+ 32                  "action": "parsed_requirements",
+ 33                  "data": parsed,
+ 34              }
+ 35          )
+ 36  
+ 37          return state
+ 38  
+ 39      def _extract_domain(self, text: str) -> str:
+ 40          for keyword in self.keywords["domain"]:
+ 41              if keyword in text:
+ 42                  return keyword
+ 43          return "general"
+ 44  
+ 45      def _extract_scale(self, text: str) -> int:
+ 46          import re
+ 47  
+ 48          numbers = re.findall(r"(\d+)k?\s*users?", text)
+ 49          if numbers:
+ 50              num = int(numbers[0])
+ 51              return num * 1000 if "k" in text else num
+ 52          return 1000
+ 53  
+ 54      def _extract_platform(self, text: str) -> List[str]:
+ 55          platforms = []
+ 56          for keyword in self.keywords["platform"]:
+ 57              if keyword in text:
+ 58                  platforms.append(keyword)
+ 59          return platforms or ["web"]
+ 60  
+ 61      def _extract_features(self, text: str) -> List[str]:
+ 62          features = []
+ 63          for keyword in self.keywords["features"]:
+ 64              if keyword in text:
+ 65                  features.append(keyword)
+ 66          return features
+ 67  
+ 68  
+ 69  class SuggestionAgent:
+ 70      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 71          """Generate smart suggestions for missing requirements"""
+ 72          parsed = state["parsed_requirements"]
+ 73          suggestions = []
+ 74  
+ 75          if not parsed.get("features"):
+ 76              suggestions.append("Would you like real-time tracking capabilities?")
+ 77  
+ 78          if parsed.get("scale", 0) > 50000:
+ 79              suggestions.append("Do you need load balancing and auto-scaling?")
+ 80  
+ 81          if "mobile" in parsed.get("platform", []):
+ 82              suggestions.append("Should the app support offline functionality?")
+ 83  
+ 84          state["suggestions"] = suggestions
+ 85          return state
+ 86  
+ 87  
+ 88  class SecurityAgent:
+ 89      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 90          """Add security and compliance requirements"""
+ 91          parsed = state["parsed_requirements"]
+ 92  
+ 93          security_reqs = {
+ 94              "compliance": ["GDPR", "SOC2"],
+ 95              "authentication": "Multi-factor authentication required",
+ 96              "encryption": "End-to-end encryption for data in transit and at rest",
+ 97              "audit_logging": "Comprehensive audit logging required",
+ 98          }
+ 99  
+100          # Add specific requirements based on scale
+101          if parsed.get("scale", 0) > 10000:
+102              security_reqs["compliance"].append("ISO 27001")
+103  
+104          state["security_requirements"] = security_reqs
+105          return state
+106  
+107  
+108  class BudgetAgent:
+109      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+110          """Estimate budget using rule-based calculations"""
+111          parsed = state["parsed_requirements"]
+112  
+113          base_cost = 50000  # Base development cost
+114          scale_multiplier = parsed.get("scale", 1000) / 1000
+115          platform_multiplier = len(parsed.get("platform", ["web"])) * 0.5 + 0.5
+116  
+117          estimated_cost = base_cost * scale_multiplier * platform_multiplier
+118  
+119          budget_estimate = {
+120              "development_cost": estimated_cost,
+121              "monthly_hosting": estimated_cost * 0.02,
+122              "maintenance_yearly": estimated_cost * 0.2,
+123              "total_first_year": estimated_cost * 1.44,
+124          }
+125  
+126          state["budget_estimate"] = budget_estimate
+127          return state
+128  
+129  
+130  class TechAgent:
+131      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+132          """Suggest technology stack and architecture"""
+133          parsed = state["parsed_requirements"]
+134  
+135          tech_stack = {
+136              "backend": "Node.js/Python with microservices architecture",
+137              "database": "PostgreSQL with Redis for caching",
+138              "cloud": "AWS/Azure with auto-scaling groups",
+139              "monitoring": "CloudWatch/Application Insights",
+140          }
+141  
+142          if "mobile" in parsed.get("platform", []):
+143              tech_stack["mobile"] = "React Native or Flutter"
+144  
+145          if parsed.get("scale", 0) > 50000:
+146              tech_stack["load_balancer"] = "Application Load Balancer"
+147              tech_stack["cdn"] = "CloudFront/Azure CDN"
+148  
+149          state["tech_recommendations"] = tech_stack
+150          return state
+151  
+152  
+153  class AggregatorAgent:
+154      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+155          """Combine all agent outputs into unified requirements"""
+156          aggregated = {
+157              "parsed_requirements": state["parsed_requirements"],
+158              "security_requirements": state["security_requirements"],
+159              "budget_estimate": state["budget_estimate"],
+160              "tech_recommendations": state["tech_recommendations"],
+161              "suggestions_addressed": state["suggestions"],
+162          }
+163  
+164          state["aggregated_requirements"] = aggregated
+165          return state
+166  
+167  
+168  class RFPGeneratorAgent:
+169      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+170          """Generate structured RFP document"""
+171          reqs = state["aggregated_requirements"]
+172  
+173          rfp_template = f"""
+174  # Request for Proposal (RFP)
+175  ## Project Overview
+176  Domain: {reqs['parsed_requirements']['domain']}
+177  Scale: {reqs['parsed_requirements']['scale']} users
+178  Platform: {', '.join(reqs['parsed_requirements']['platform'])}
+179  
+180  ## Technical Requirements
+181  {self._format_tech_requirements(reqs['tech_recommendations'])}
+182  
+183  ## Security & Compliance
+184  {self._format_security_requirements(reqs['security_requirements'])}
+185  
+186  ## Budget Expectations
+187  Development Cost: ${reqs['budget_estimate']['development_cost']:,.2f}
+188  First Year Total: ${reqs['budget_estimate']['total_first_year']:,.2f}
+189  
+190  ## Evaluation Criteria
+191  - Technical expertise (30%)
+192  - Cost effectiveness (25%)
+193  - Timeline feasibility (20%)
+194  - Security compliance (15%)
+195  - Past experience (10%)
+196          """
+197  
+198          state["rfp_document"] = rfp_template.strip()
+199          return state
+200  
+201      def _format_tech_requirements(self, tech_reqs: Dict) -> str:
+202          return "\n".join([f"- {k.title()}: {v}" for k, v in tech_reqs.items()])
+203  
+204      def _format_security_requirements(self, sec_reqs: Dict) -> str:
+205          formatted = []
+206          for k, v in sec_reqs.items():
+207              if isinstance(v, list):
+208                  formatted.append(f"- {k.title()}: {', '.join(v)}")
+209              else:
+210                  formatted.append(f"- {k.title()}: {v}")
+211          return "\n".join(formatted)
+212  
+213  
+214  class VendorSimulatorAgent:
+215      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+216          """Generate mock vendor proposals"""
+217          budget = state["budget_estimate"]["development_cost"]
+218  
+219          proposals = [
+220              {
+221                  "vendor_name": "TechCorp Solutions",
+222                  "cost": budget * 0.9,
+223                  "timeline_months": 8,
+224                  "features": ["Real-time tracking", "Mobile app", "Analytics dashboard"],
+225                  "risk_factors": ["Aggressive timeline"],
+226              },
+227              {
+228                  "vendor_name": "Reliable Systems Inc",
+229                  "cost": budget * 1.1,
+230                  "timeline_months": 12,
+231                  "features": ["Real-time tracking", "Mobile app", "Advanced security"],
+232                  "risk_factors": ["Higher cost"],
+233              },
+234              {
+235                  "vendor_name": "StartupTech",
+236                  "cost": budget * 0.7,
+237                  "timeline_months": 6,
+238                  "features": ["Basic tracking", "Web platform"],
+239                  "risk_factors": ["Limited experience", "Unrealistic timeline"],
+240              },
+241          ]
+242  
+243          state["vendor_proposals"] = proposals
+244          return state
+245  
+246  
+247  class RiskEvaluatorAgent:
+248      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+249          """Evaluate and score proposals for risks"""
+250          proposals = state["vendor_proposals"]
+251          scored_proposals = []
+252  
+253          for proposal in proposals:
+254              risk_score = self._calculate_risk_score(proposal)
+255              scored_proposal = {**proposal, "risk_score": risk_score}
+256              scored_proposals.append(scored_proposal)
+257  
+258          state["proposal_scores"] = scored_proposals
+259          return state
+260  
+261      def _calculate_risk_score(self, proposal: Dict) -> float:
+262          """Calculate risk score (0-1, lower is better)"""
+263          risk_score = 0.0
+264  
+265          # Timeline risk
+266          if proposal["timeline_months"] < 8:
+267              risk_score += 0.3
+268  
+269          # Cost risk
+270          if proposal["cost"] < 50000:
+271              risk_score += 0.2
+272  
+273          # Feature completeness risk
+274          if len(proposal["features"]) < 3:
+275              risk_score += 0.2
+276  
+277          # Risk factors
+278          risk_score += len(proposal.get("risk_factors", [])) * 0.1
+279  
+280          return min(risk_score, 1.0)
+
+---
+rfp_automation/agents/recommendation_engine.py
+---
+ 1  from typing import Dict, List
+ 2  
+ 3  from ..workflow.state import EnhancedRFPState
+ 4  
+ 5  
+ 6  class RecommendationEngine:
+ 7      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 8          """Rank proposals and generate recommendations"""
+ 9          proposals = state["proposal_scores"]
+10  
+11          # Calculate weighted scores
+12          for proposal in proposals:
+13              score = self._calculate_weighted_score(proposal)
+14              proposal["final_score"] = score
+15  
+16          # Sort by score (higher is better)
+17          ranked_proposals = sorted(
+18              proposals, key=lambda x: x["final_score"], reverse=True
+19          )
+20  
+21          recommendations = {
+22              "top_choice": ranked_proposals[0],
+23              "ranked_proposals": ranked_proposals,
+24              "summary": self._generate_summary(ranked_proposals),
+25          }
+26  
+27          state["recommendations"] = recommendations
+28          return state
+29  
+30      def _calculate_weighted_score(self, proposal: Dict) -> float:
+31          """Calculate weighted score (0-100)"""
+32          # Cost score (inverse - lower cost is better)
+33          cost_score = max(0, 100 - (proposal["cost"] / 1000))
+34  
+35          # Risk score (inverse - lower risk is better)
+36          risk_score = (1 - proposal["risk_score"]) * 100
+37  
+38          # Feature score
+39          feature_score = len(proposal["features"]) * 20
+40  
+41          # Timeline score (reasonable timeline gets higher score)
+42          timeline_score = 100 if 8 <= proposal["timeline_months"] <= 12 else 50
+43  
+44          # Weighted average
+45          weighted_score = (
+46              cost_score * 0.3
+47              + risk_score * 0.3
+48              + feature_score * 0.2
+49              + timeline_score * 0.2
+50          )
+51  
+52          return weighted_score
+53  
+54      def _generate_summary(self, proposals: List[Dict]) -> str:
+55          top = proposals[0]
+56          return f"Recommended vendor: {top['vendor_name']} with score {top['final_score']:.1f}/100"
+
+---
+rfp_automation/agents/vendor_intelligence.py
+---
+  1  from typing import Dict, List
+  2  
+  3  from tavily import TavilyClient
+  4  
+  5  from ..workflow.state import EnhancedRFPState
+  6  from .knowledge_management import KnowledgeManagementAgent
+  7  
+  8  
+  9  class VendorIntelligenceAgent:
+ 10      def __init__(
+ 11          self, tavily_client: TavilyClient, knowledge_agent: KnowledgeManagementAgent
+ 12      ):
+ 13          self.tavily_client = tavily_client
+ 14          self.knowledge_agent = knowledge_agent
+ 15  
+ 16      def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 17          """Generate intelligent vendor proposals based on market research"""
+ 18          budget = state["budget_estimate"]["development_cost"]
+ 19          market_research = state.get("market_research", {})
+ 20          domain = state["parsed_requirements"].get("domain", "software")
+ 21  
+ 22          # Search for specific vendor information
+ 23          vendor_query = f"best {domain} development companies 2025 case studies pricing"
+ 24          vendor_research = self._research_vendors(vendor_query)
+ 25  
+ 26          # Generate realistic proposals based on market intelligence
+ 27          proposals = self._generate_intelligent_proposals(
+ 28              budget, market_research, vendor_research
+ 29          )
+ 30  
+ 31          state["vendor_proposals"] = proposals
+ 32          state["vendor_intelligence"] = {
+ 33              "research_conducted": True,
+ 34              "vendors_researched": len(vendor_research),
+ 35              "market_factors_considered": len(market_research.get("market_trends", [])),
+ 36          }
+ 37  
+ 38          return state
+ 39  
+ 40      def _research_vendors(self, query: str) -> List[Dict]:
+ 41          """Research actual vendor information"""
+ 42          try:
+ 43              results = self.tavily_client.search(
+ 44                  query=query, search_depth="basic", max_results=5
+ 45              )
+ 46              return results.get("results", [])
+ 47          except:
+ 48              return []
+ 49  
+ 50      def _generate_intelligent_proposals(
+ 51          self, budget: float, market_research: Dict, vendor_research: List
+ 52      ) -> List[Dict]:
+ 53          """Generate proposals based on real market intelligence"""
+ 54          proposals = []
+ 55  
+ 56          # Extract vendor names and characteristics from research
+ 57          vendor_characteristics = self._extract_vendor_characteristics(vendor_research)
+ 58  
+ 59          # Generate 3-4 realistic proposals
+ 60          proposal_templates = [
+ 61              {
+ 62                  "type": "premium",
+ 63                  "cost_multiplier": 1.2,
+ 64                  "timeline_months": 10,
+ 65                  "risk_factors": ["Higher cost"],
+ 66                  "strengths": ["Proven track record", "Enterprise experience"],
+ 67              },
+ 68              {
+ 69                  "type": "balanced",
+ 70                  "cost_multiplier": 1.0,
+ 71                  "timeline_months": 8,
+ 72                  "risk_factors": ["Standard timeline"],
+ 73                  "strengths": ["Good balance of cost and quality"],
+ 74              },
+ 75              {
+ 76                  "type": "aggressive",
+ 77                  "cost_multiplier": 0.8,
+ 78                  "timeline_months": 6,
+ 79                  "risk_factors": ["Aggressive timeline", "Cost cutting"],
+ 80                  "strengths": ["Fast delivery", "Cost effective"],
+ 81              },
+ 82          ]
+ 83  
+ 84          for i, template in enumerate(proposal_templates):
+ 85              vendor_name = vendor_characteristics.get(i, {}).get(
+ 86                  "name", f"Vendor {chr(65+i)}"
+ 87              )
+ 88  
+ 89              proposal = {
+ 90                  "vendor_name": vendor_name,
+ 91                  "cost": budget * template["cost_multiplier"],
+ 92                  "timeline_months": template["timeline_months"],
+ 93                  "features": self._generate_features_based_on_research(market_research),
+ 94                  "risk_factors": template["risk_factors"],
+ 95                  "strengths": template["strengths"],
+ 96                  "market_intelligence_used": True,
+ 97              }
+ 98              proposals.append(proposal)
+ 99  
+100          return proposals
+101  
+102      def _extract_vendor_characteristics(self, vendor_research: List) -> Dict:
+103          """Extract vendor names and characteristics from research"""
+104          characteristics = {}
+105          for i, result in enumerate(vendor_research[:3]):
+106              title = result.get("title", "")
+107              # Simple extraction - can be enhanced with NLP
+108              vendor_name = title.split()[0] if title else f"TechCorp {chr(65+i)}"
+109              characteristics[i] = {
+110                  "name": vendor_name,
+111                  "source": result.get("url", "unknown"),
+112              }
+113          return characteristics
+114  
+115      def _generate_features_based_on_research(self, market_research: Dict) -> List[str]:
+116          """Generate features based on market trends"""
+117          base_features = ["Core functionality", "User management", "Basic reporting"]
+118  
+119          # Add trending features based on market research
+120          trends = market_research.get("technology_trends", [])
+121          for trend in trends:
+122              trend_lower = trend.lower()
+123              if "ai" in trend_lower or "machine learning" in trend_lower:
+124                  base_features.append("AI-powered analytics")
+125              if "mobile" in trend_lower:
+126                  base_features.append("Mobile-first design")
+127              if "security" in trend_lower:
+128                  base_features.append("Advanced security features")
+129  
+130          return base_features[:5]  # Limit to 5 features
+
+---
+rfp_automation/workflow/enhanced_workflow.py
+---
+  1  from langgraph.graph import StateGraph, START, END
+  2  from tavily import TavilyClient
+  3  
+  4  from ..agents import *
+  5  from .state import EnhancedRFPState
+  6  
+  7  
+  8  class EnhancedRFPAutomationWorkflow:
+  9      def __init__(self, tavily_api_key: str, chroma_persist_dir: str = "./chroma_db"):
+ 10          # Initialize enhanced agents
+ 11          self.knowledge_agent = KnowledgeManagementAgent(chroma_persist_dir)
+ 12          self.market_research_agent = MarketResearchAgent(tavily_api_key)
+ 13          self.vendor_intelligence_agent = VendorIntelligenceAgent(
+ 14              TavilyClient(api_key=tavily_api_key), self.knowledge_agent
+ 15          )
+ 16  
+ 17          # Original agents (enhanced)
+ 18          self.agents = {
+ 19              "nlp_parser": NLPParserAgent(),
+ 20              "market_research": self.market_research_agent,
+ 21              "knowledge_management": self.knowledge_agent,
+ 22              "suggestion": SuggestionAgent(),
+ 23              "security": SecurityAgent(),
+ 24              "budget": EnhancedBudgetAgent(),
+ 25              "tech": TechAgent(),
+ 26              "aggregator": AggregatorAgent(),
+ 27              "rfp_generator": RFPGeneratorAgent(),
+ 28              "vendor_intelligence": self.vendor_intelligence_agent,
+ 29              "risk_evaluator": RiskEvaluatorAgent(),
+ 30              "recommendation": RecommendationEngine(),
+ 31          }
+ 32  
+ 33          self.graph = self._build_enhanced_graph()
+ 34  
+ 35      def _build_enhanced_graph(self):
+ 36          """Build enhanced workflow with search and vector storage"""
+ 37          workflow = StateGraph(EnhancedRFPState)
+ 38  
+ 39          # Add nodes
+ 40          workflow.add_node("parse_input", self._parse_input_node)
+ 41          workflow.add_node("conduct_market_research", self._market_research_node)
+ 42          workflow.add_node("manage_knowledge", self._knowledge_management_node)
+ 43          workflow.add_node("generate_suggestions", self._suggestion_node)
+ 44          workflow.add_node("enrich_security", self._security_node)
+ 45          workflow.add_node("estimate_budget", self._enhanced_budget_node)
+ 46          workflow.add_node("generate_tech_recommendations", self._tech_node)
+ 47          workflow.add_node("aggregate_requirements", self._aggregator_node)
+ 48          workflow.add_node("generate_rfp", self._rfp_generator_node)
+ 49          workflow.add_node("vendor_intelligence_agent", self._vendor_intelligence_node)
+ 50          workflow.add_node("evaluate_risks", self._risk_evaluator_node)
+ 51          workflow.add_node("generate_recommendations", self._recommendation_node)
+ 52  
+ 53          # Enhanced workflow edges
+ 54          workflow.add_edge(START, "parse_input")
+ 55          workflow.add_edge("parse_input", "conduct_market_research")
+ 56          workflow.add_edge("conduct_market_research", "manage_knowledge")
+ 57          workflow.add_edge("manage_knowledge", "generate_suggestions")
+ 58          workflow.add_edge("generate_suggestions", "enrich_security")
+ 59          workflow.add_edge("enrich_security", "estimate_budget")
+ 60          workflow.add_edge("estimate_budget", "generate_tech_recommendations")
+ 61          workflow.add_edge("generate_tech_recommendations", "aggregate_requirements")
+ 62          workflow.add_edge("aggregate_requirements", "generate_rfp")
+ 63          workflow.add_edge("generate_rfp", "vendor_intelligence_agent")
+ 64          workflow.add_edge("vendor_intelligence_agent", "evaluate_risks")
+ 65          workflow.add_edge("evaluate_risks", "generate_recommendations")
+ 66          workflow.add_edge("generate_recommendations", END)
+ 67  
+ 68          return workflow.compile()
+ 69  
+ 70      # Enhanced node wrapper functions
+ 71      def _market_research_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 72          return self.agents["market_research"].process(state)
+ 73  
+ 74      def _knowledge_management_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 75          return self.agents["knowledge_management"].process(state)
+ 76  
+ 77      def _enhanced_budget_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 78          return self.agents["budget"].process(state)
+ 79  
+ 80      def _vendor_intelligence_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 81          return self.agents["vendor_intelligence"].process(state)
+ 82  
+ 83      # Node wrapper functions
+ 84      def _parse_input_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 85          return self.agents["nlp_parser"].process(state)
+ 86  
+ 87      def _suggestion_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 88          return self.agents["suggestion"].process(state)
+ 89  
+ 90      def _security_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 91          return self.agents["security"].process(state)
+ 92  
+ 93      def _tech_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 94          return self.agents["tech"].process(state)
+ 95  
+ 96      def _aggregator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+ 97          return self.agents["aggregator"].process(state)
+ 98  
+ 99      def _rfp_generator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+100          return self.agents["rfp_generator"].process(state)
+101  
+102      def _vendor_simulator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+103          return self.agents["vendor_simulator"].process(state)
+104  
+105      def _risk_evaluator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+106          return self.agents["risk_evaluator"].process(state)
+107  
+108      def _recommendation_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+109          return self.agents["recommendation"].process(state)
+110  
+111      def run(self, user_input: str) -> EnhancedRFPState:
+112          """Execute the complete workflow"""
+113          initial_state: EnhancedRFPState = {
+114              "user_approved": False,
+115              "user_input": user_input,
+116              "audit_log": [],
+117              "reviewer_comments": [],
+118              "analytics": {},
+119              "parsed_requirements": {},
+120              "market_research": {},
+121              "vendor_intelligence": {},
+122              "cached_knowledge": [],
+123              "suggestions": [],
+124              "security_requirements": {},
+125              "budget_estimate": {},
+126              "tech_recommendations": {},
+127              "aggregated_requirements": {},
+128              "rfp_document": "",
+129              "vendor_proposals": [],
+130              "proposal_scores": [],
+131              "recommendations": {},
+132              "visual_summary": {},
+133              "search_metadata": {},
+134          }
+135  
+136          result = self.graph.invoke(initial_state)
+137          return result  # type:ignore
+
+---
+rfp_automation/workflow/state.py
+---
+ 1  from typing import Any, Dict, List, TypedDict
+ 2  
+ 3  
+ 4  class EnhancedRFPState(TypedDict):
+ 5      """Enhanced state with search and vector storage capabilities"""
+ 6  
+ 7      user_input: str
+ 8      parsed_requirements: Dict[str, Any]
+ 9      market_research: Dict[str, Any]  # New: Tavily search results
+10      vendor_intelligence: Dict[str, Any]  # New: Vendor research
+11      cached_knowledge: List[Dict[str, Any]]  # New: ChromaDB results
+12      suggestions: List[str]
+13      security_requirements: Dict[str, Any]
+14      budget_estimate: Dict[str, Any]
+15      tech_recommendations: Dict[str, Any]
+16      aggregated_requirements: Dict[str, Any]
+17      rfp_document: str
+18      user_approved: bool
+19      vendor_proposals: List[Dict[str, Any]]
+20      proposal_scores: List[Dict[str, Any]]
+21      recommendations: Dict[str, Any]
+22      audit_log: List[Dict[str, Any]]
+23      visual_summary: Dict[str, Any]
+24      reviewer_comments: List[str]
+25      analytics: Dict[str, Any]
+26      search_metadata: Dict[str, Any]  # New: Search performance metrics
+
+---
+rfp_automation/utils/export.py
+---
+
+
+---
+rfp_automation/utils/logging.py
+---
+
+
+---
+rfp_automation/utils/visualization.py
+---
+
+
+---
+rfp_automation/config/settings.py
+---
+ 1  from pathlib import Path
+ 2  
+ 3  from pydantic_settings import BaseSettings, SettingsConfigDict
+ 4  
+ 5  env_path = Path.cwd() / ".env"
+ 6  
+ 7  
+ 8  class Settings(BaseSettings):
+ 9  
+10      TAVILY_API_KEY: str
+11      GOOGLE_API_KEY: str
+12      CHROMA_PERSIST_DIRECTORY: str
+13      LOG_LEVEL: str = "INFO"
+14      STREAMLIT_SERVER_PORT: int
+15  
+16      model_config = SettingsConfigDict(
+17          env_file=str(env_path), extra="allow", env_file_encoding="utf-8"
+18      )
+19  
+20  
+21  get_settings = lambda: Settings()
+
+---
