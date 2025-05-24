@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 from typing import Dict, List
 from pydantic import BaseModel, Field
 
@@ -6,11 +7,12 @@ from ..workflow.state import EnhancedRFPState
 from ..utils.llm import get_llm
 
 
-class ResponseModel(BaseModel):
+class NLParserResponse(BaseModel):
     domain: str = Field(..., description="")
-    scale: str = Field(..., description="")
-    platform: str = Field(..., description="")
-    features: str = Field(..., description="")
+    scale: int = Field(..., description="")
+    platform: list[str] = Field(..., description="")
+    features: list[str] = Field(..., description="")
+    urgency: str
 
 
 class NLPParserAgent:
@@ -22,7 +24,7 @@ class NLPParserAgent:
             "features": ["real-time", "analytics", "dashboard", "reporting"],
         }
 
-        self.llm = get_llm(0, response_model=ResponseModel)
+        self.llm = get_llm(0, response_model=NLParserResponse)
 
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
         """Extract structured requirements from user input"""
@@ -53,22 +55,43 @@ User input:
         return state
 
 
+class SuggestionAgentResponse(BaseModel):
+    suggestions: list[str]
+
+
 class SuggestionAgent:
+
+    def __init__(self):
+        self.llm = get_llm(response_model=SuggestionAgentResponse)
+
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
         """Generate smart suggestions for missing requirements"""
+        knowledge = state["cached_knowledge"]
         parsed = state["parsed_requirements"]
-        suggestions = []
 
-        if not parsed.get("features"):
-            suggestions.append("Would you like real-time tracking capabilities?")
+        # Prepare a context summary from the knowledge base
+        context = "\n".join([f"- {item['content']}" for item in knowledge])
 
-        if parsed.get("scale", 0) > 50000:
-            suggestions.append("Do you need load balancing and auto-scaling?")
+        # Generate a prompt to the LLM
+        prompt = (
+            "You are a requirements analyst. Based on the following parsed requirements "
+            "and contextual knowledge, suggest 3-5 questions or feature ideas the user "
+            "might have missed.\n\n"
+            f"Parsed Requirements:\n{parsed}\n\n"
+            f"Contextual Knowledge:\n{context}\n\n"
+            "Respond with a list of suggestions."
+        )
 
-        if "mobile" in parsed.get("platform", []):
-            suggestions.append("Should the app support offline functionality?")
+        try:
+            response = self.llm(prompt)
+            state["suggestions"] = response.suggestions
+        except Exception as e:
+            # Fallback in case LLM fails
+            state["suggestions"] = [
+                "Could not generate suggestions due to an internal error."
+            ]
+            logging.exception("LLM failed during suggestion generation")
 
-        state["suggestions"] = suggestions
         return state
 
 

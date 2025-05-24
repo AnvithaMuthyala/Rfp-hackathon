@@ -1,17 +1,23 @@
 from datetime import datetime
 from typing import Any, Dict, List
 from uuid import uuid4
+from pathlib import Path
 
 import chromadb
 import chromadb.utils.embedding_functions as ef
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain.retrievers import TavilySearchAPIRetriever
 
 from ..config.settings import get_settings
 from ..workflow.state import EnhancedRFPState
 
 settings = get_settings()
+
+
+data_folder = Path.cwd() / "data"
+data_folder.mkdir(exist_ok=True)
 
 
 class KnowledgeManagementAgent:
@@ -25,10 +31,12 @@ class KnowledgeManagementAgent:
         )
         self.collection_name = "rfp_knowledge_base"
         self.vector_store = self._initialize_vector_store()
+        self.relevance_threshold = 0.8
+        self.tavily_retriever = TavilySearchAPIRetriever()
+
+        self.index_documents_from_folder(str(data_folder))
 
     def _initialize_vector_store(self):
-        """Initialize ChromaDB with persistence"""
-
         client = chromadb.PersistentClient(path=self.persist_directory)
         try:
             return client.get_collection(self.collection_name)
@@ -39,31 +47,41 @@ class KnowledgeManagementAgent:
             )
 
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        """Retrieve relevant knowledge and cache new information"""
         parsed = state["parsed_requirements"]
+        domains = parsed.get("domain", [])
+        scale = parsed.get("scale", "")
         market_research = state.get("market_research", {})
 
-        # Search existing knowledge base
-        query = f"{parsed.get('domain')} {parsed.get('scale')} users requirements"
-        cached_results = self._search_knowledge_base(query)
+        cached_knowledge = []
+        print("domains", domains)
 
-        # Cache new market research data
-        if market_research and not market_research.get("error"):
-            self._cache_market_research(market_research, parsed)
+        for domain in domains:
+            query = f"{domain} {scale} users requirements"
+            results = self._search_knowledge_base(query)
 
-        state["cached_knowledge"] = cached_results
+            print("results", results)
+            if not results or results[0]["relevance_score"] < self.relevance_threshold:
+                tavily_results = self._fetch_tavily_data(query)
+                if tavily_results:
+                    self._cache_market_research(tavily_results, {"domain": domain})
+                    results = self._search_knowledge_base(query)
+
+            cached_knowledge.extend(results)
+
+        state["cached_knowledge"] = cached_knowledge
         return state
 
     def _search_knowledge_base(self, query: str, k: int = 3) -> List[Dict]:
-        """Search ChromaDB for relevant cached knowledge"""
         try:
             if self.vector_store.count() == 0:
                 return []
 
-            results = self.vector_store.query(query_texts=query, n_results=k)
+            results = self.vector_store.query(query_texts=[query], n_results=k)
 
             formatted_results = []
-            for doc, score in results:
+            for doc, score in zip(
+                results.get("documents")[0], results["distances"][0]  # type:ignore
+            ):
                 formatted_results.append(
                     {
                         "content": doc,
@@ -73,15 +91,21 @@ class KnowledgeManagementAgent:
                 )
 
             return formatted_results
-        except Exception as e:
+        except Exception:
             return []
 
+    def _fetch_tavily_data(self, query: str) -> Dict:
+        try:
+            search_results = self.tavily_retriever.get_relevant_documents(query)
+            market_trends = [doc.page_content for doc in search_results]
+            return {"market_trends": market_trends}
+        except Exception:
+            return {}
+
     def _cache_market_research(self, market_research: Dict, requirements: Dict):
-        """Cache market research data in ChromaDB"""
         try:
             documents = []
 
-            # Cache market trends
             for trend in market_research.get("market_trends", []):
                 doc = Document(
                     page_content=trend,
@@ -94,7 +118,6 @@ class KnowledgeManagementAgent:
                 )
                 documents.append(doc)
 
-            # Cache vendor insights
             for insight in market_research.get("vendor_landscape", []):
                 doc = Document(
                     page_content=insight,
@@ -108,13 +131,40 @@ class KnowledgeManagementAgent:
                 documents.append(doc)
 
             if documents:
-                # Split long documents
                 split_docs = self.text_splitter.split_documents(documents)
                 self.vector_store.add(
-                    ids=[str(uuid4()) for x in range(len(split_docs))],
-                    documents=list(map(lambda doc: doc.page_content, split_docs)),
+                    ids=[str(uuid4()) for _ in range(len(split_docs))],
+                    documents=[doc.page_content for doc in split_docs],
                 )
-
-        except Exception as e:
-            # Log error but don't fail the workflow
+        except Exception:
             pass
+
+    def index_documents_from_folder(self, base_path: str):
+        base_dir = Path(base_path)
+        if not base_dir.exists() or not base_dir.is_dir():
+            print(f"Directory {base_path} does not exist or is not a directory.")
+            return
+
+        for domain_dir in base_dir.iterdir():
+            if domain_dir.is_dir():
+                domain = domain_dir.name
+                for txt_file in domain_dir.glob("*.txt"):
+                    try:
+                        content = txt_file.read_text(encoding="utf-8").strip()
+                        doc = Document(
+                            page_content=content,
+                            metadata={
+                                "type": "domain_knowledge",
+                                "domain": domain,
+                                "timestamp": datetime.now().isoformat(),
+                                "source": str(txt_file),
+                            },
+                        )
+                        split_docs = self.text_splitter.split_documents([doc])
+                        self.vector_store.add(
+                            ids=[str(uuid4()) for _ in range(len(split_docs))],
+                            documents=[doc.page_content for doc in split_docs],
+                        )
+                        print(f"Indexed {txt_file} under domain '{domain}'.")
+                    except Exception as e:
+                        print(f"Failed to read {txt_file}: {e}")

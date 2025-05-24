@@ -164,6 +164,10 @@ def main():
                         st.session_state.user_input_val or ""
                     )
                     st.session_state.rfp_state_data = backend_output_state
+
+                    with open("state.json", "w") as f:
+                        json.dump(backend_output_state, f)
+
                     st.session_state.rfp_run_complete = True
                     st.success("✅ RFP generation completed successfully!")
                 except Exception as e:
