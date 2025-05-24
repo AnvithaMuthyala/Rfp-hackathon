@@ -1,7 +1,16 @@
 from datetime import datetime
 from typing import Dict, List
+from pydantic import BaseModel, Field
 
 from ..workflow.state import EnhancedRFPState
+from ..utils.llm import get_llm
+
+
+class ResponseModel(BaseModel):
+    domain: str = Field(..., description="")
+    scale: str = Field(..., description="")
+    platform: str = Field(..., description="")
+    features: str = Field(..., description="")
 
 
 class NLPParserAgent:
@@ -13,57 +22,35 @@ class NLPParserAgent:
             "features": ["real-time", "analytics", "dashboard", "reporting"],
         }
 
+        self.llm = get_llm(0, response_model=ResponseModel)
+
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
         """Extract structured requirements from user input"""
         user_input = state["user_input"].lower()
 
-        parsed = {
-            "domain": self._extract_domain(user_input),
-            "scale": self._extract_scale(user_input),
-            "platform": self._extract_platform(user_input),
-            "features": self._extract_features(user_input),
-        }
+        prompt = f"""From the input, identify and extract the following:
 
-        state["parsed_requirements"] = parsed
+- "domain": The industry or area the request pertains to (e.g., healthcare, e-commerce, education).
+- "scale": The expected size or scope (e.g., startup-level, enterprise, global).
+- "platform": The type of platform or environment (e.g., web, mobile, cloud).
+- "features": A list of key features or functionalities mentioned or implied.
+
+User input:
+{user_input}"""
+
+        response = self.llm(prompt)
+
+        state["parsed_requirements"] = response.model_dump()  # type:ignore
         state["audit_log"].append(
             {
                 "timestamp": datetime.now().isoformat(),
                 "agent": "NLPParser",
                 "action": "parsed_requirements",
-                "data": parsed,
+                "data": response.model_dump(),  # type:ignore
             }
         )
 
         return state
-
-    def _extract_domain(self, text: str) -> str:
-        for keyword in self.keywords["domain"]:
-            if keyword in text:
-                return keyword
-        return "general"
-
-    def _extract_scale(self, text: str) -> int:
-        import re
-
-        numbers = re.findall(r"(\d+)k?\s*users?", text)
-        if numbers:
-            num = int(numbers[0])
-            return num * 1000 if "k" in text else num
-        return 1000
-
-    def _extract_platform(self, text: str) -> List[str]:
-        platforms = []
-        for keyword in self.keywords["platform"]:
-            if keyword in text:
-                platforms.append(keyword)
-        return platforms or ["web"]
-
-    def _extract_features(self, text: str) -> List[str]:
-        features = []
-        for keyword in self.keywords["features"]:
-            if keyword in text:
-                features.append(keyword)
-        return features
 
 
 class SuggestionAgent:

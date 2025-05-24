@@ -1,8 +1,21 @@
+import logging
 from langgraph.graph import StateGraph, START, END
 from tavily import TavilyClient
 
 from ..agents import *
 from .state import EnhancedRFPState
+
+# Configure logging to file
+log_file = "rfp_workflow.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler(),  # Optional: keep this to also see logs in the console
+    ],
+)
+logger = logging.getLogger(__name__)
 
 
 class EnhancedRFPAutomationWorkflow:
@@ -67,49 +80,82 @@ class EnhancedRFPAutomationWorkflow:
 
         return workflow.compile()
 
-    # Enhanced node wrapper functions
+    # Enhanced node wrapper functions with logging
+    def _parse_input_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+        logger.info("Starting: parse_input")
+        result = self.agents["nlp_parser"].process(state)
+        logger.info(f"Finished: parse_input {result}")
+        return result
+
     def _market_research_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["market_research"].process(state)
+        logger.info("Starting: conduct_market_research")
+        result = self.agents["market_research"].process(state)
+        logger.info(f"Finished: conduct_market_research {result}")
+        return result
 
     def _knowledge_management_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["knowledge_management"].process(state)
-
-    def _enhanced_budget_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["budget"].process(state)
-
-    def _vendor_intelligence_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["vendor_intelligence"].process(state)
-
-    # Node wrapper functions
-    def _parse_input_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["nlp_parser"].process(state)
+        logger.info("Starting: manage_knowledge")
+        result = self.agents["knowledge_management"].process(state)
+        logger.info("Finished: manage_knowledge")
+        return result
 
     def _suggestion_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["suggestion"].process(state)
+        logger.info("Starting: generate_suggestions")
+        result = self.agents["suggestion"].process(state)
+        logger.info("Finished: generate_suggestions")
+        return result
 
     def _security_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["security"].process(state)
+        logger.info("Starting: enrich_security")
+        result = self.agents["security"].process(state)
+        logger.info("Finished: enrich_security")
+        return result
+
+    def _enhanced_budget_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+        logger.info("Starting: estimate_budget")
+        result = self.agents["budget"].process(state)
+        logger.info("Finished: estimate_budget")
+        return result
 
     def _tech_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["tech"].process(state)
+        logger.info("Starting: generate_tech_recommendations")
+        result = self.agents["tech"].process(state)
+        logger.info("Finished: generate_tech_recommendations")
+        return result
 
     def _aggregator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["aggregator"].process(state)
+        logger.info("Starting: aggregate_requirements")
+        result = self.agents["aggregator"].process(state)
+        logger.info("Finished: aggregate_requirements")
+        return result
 
     def _rfp_generator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["rfp_generator"].process(state)
+        logger.info("Starting: generate_rfp")
+        result = self.agents["rfp_generator"].process(state)
+        logger.info("Finished: generate_rfp")
+        return result
 
-    def _vendor_simulator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["vendor_simulator"].process(state)
+    def _vendor_intelligence_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
+        logger.info("Starting: vendor_intelligence_agent")
+        result = self.agents["vendor_intelligence"].process(state)
+        logger.info("Finished: vendor_intelligence_agent")
+        return result
 
     def _risk_evaluator_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["risk_evaluator"].process(state)
+        logger.info("Starting: evaluate_risks")
+        result = self.agents["risk_evaluator"].process(state)
+        logger.info("Finished: evaluate_risks")
+        return result
 
     def _recommendation_node(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        return self.agents["recommendation"].process(state)
+        logger.info("Starting: generate_recommendations")
+        result = self.agents["recommendation"].process(state)
+        logger.info("Finished: generate_recommendations")
+        return result
 
     def run(self, user_input: str) -> EnhancedRFPState:
         """Execute the complete workflow"""
+        logger.info("Workflow started")
         initial_state: EnhancedRFPState = {
             "user_approved": False,
             "user_input": user_input,
@@ -134,4 +180,5 @@ class EnhancedRFPAutomationWorkflow:
         }
 
         result = self.graph.invoke(initial_state)
+        logger.info("Workflow completed")
         return result  # type:ignore

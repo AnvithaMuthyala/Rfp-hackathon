@@ -5,3 +5,6 @@ demo_experts
 exports
 logs
 output-prompt.txt
+
+**/__pycache__
+*.log
