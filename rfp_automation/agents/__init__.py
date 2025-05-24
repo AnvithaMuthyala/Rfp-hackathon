@@ -5,12 +5,12 @@ from .nlp_parser import (
     AggregatorAgent,
     BudgetAgent,
     NLPParserAgent,
-    RFPGeneratorAgent,
     RiskEvaluatorAgent,
     SecurityAgent,
     SuggestionAgent,
     TechAgent,
     VendorSimulatorAgent,
 )
+from .rfp_generator import RFPGeneratorAgent
 from .recommendation_engine import RecommendationEngine
 from .vendor_intelligence import VendorIntelligenceAgent

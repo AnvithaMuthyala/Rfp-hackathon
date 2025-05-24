@@ -175,52 +175,6 @@ class AggregatorAgent:
         return state
 
 
-class RFPGeneratorAgent:
-    def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
-        """Generate structured RFP document"""
-        reqs = state["aggregated_requirements"]
-
-        rfp_template = f"""
-# Request for Proposal (RFP)
-## Project Overview
-Domain: {reqs['parsed_requirements']['domain']}
-Scale: {reqs['parsed_requirements']['scale']} users
-Platform: {', '.join(reqs['parsed_requirements']['platform'])}
-
-## Technical Requirements
-{self._format_tech_requirements(reqs['tech_recommendations'])}
-
-## Security & Compliance
-{self._format_security_requirements(reqs['security_requirements'])}
-
-## Budget Expectations
-Development Cost: ${reqs['budget_estimate']['development_cost']:,.2f}
-First Year Total: ${reqs['budget_estimate']['total_first_year']:,.2f}
-
-## Evaluation Criteria
-- Technical expertise (30%)
-- Cost effectiveness (25%)
-- Timeline feasibility (20%)
-- Security compliance (15%)
-- Past experience (10%)
-        """
-
-        state["rfp_document"] = rfp_template.strip()
-        return state
-
-    def _format_tech_requirements(self, tech_reqs: Dict) -> str:
-        return "\n".join([f"- {k.title()}: {v}" for k, v in tech_reqs.items()])
-
-    def _format_security_requirements(self, sec_reqs: Dict) -> str:
-        formatted = []
-        for k, v in sec_reqs.items():
-            if isinstance(v, list):
-                formatted.append(f"- {k.title()}: {', '.join(v)}")
-            else:
-                formatted.append(f"- {k.title()}: {v}")
-        return "\n".join(formatted)
-
-
 class VendorSimulatorAgent:
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
         """Generate mock vendor proposals"""

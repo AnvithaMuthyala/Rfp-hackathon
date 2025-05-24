@@ -5,6 +5,7 @@ import json
 import matplotlib.pyplot as plt
 import pandas as pd
 import random  # Used for placeholder data if backend fields are missing
+import seaborn as sns
 
 # Assuming your backend workflow and state are importable
 # Make sure these paths are correct for your project structure
@@ -57,7 +58,7 @@ def main():
     )
 
     st.markdown(
-        '<h1 class="main-header">🚀 AI-Powered RFP Automation (Integrated)</h1>',
+        '<h1 class="main-header">🚀 AI-Powered RFP Automation</h1>',
         unsafe_allow_html=True,
     )
     st.markdown(
@@ -321,44 +322,117 @@ def display_rfp_tab(state: Dict[str, Any]):
 
 def display_vendor_tab(state: Dict[str, Any]):
     st.header("🏢 Vendor Analysis & Recommendations")
-    # Backend state: `vendor_proposals` (raw), `proposal_scores` (scored), `recommendations` (ranked, top_choice)
-    recommendations_data = state.get("recommendations", {})
-    proposals = recommendations_data.get(
-        "ranked_proposals", state.get("proposal_scores", [])
-    )  # Use best available list
+
+    # Mock data for demonstration
+    mock_proposals = [
+        {
+            "vendor_name": "TechNova Solutions",
+            "vendor_type": "Enterprise",
+            "final_score": 92.5,
+            "cost": 250000,
+            "timeline_months": 6,
+            "risk_level": "Low",
+            "risk_score": 0.15,
+            "team_size": 12,
+            "experience_years": 8,
+            "features": ["Cloud Integration", "24/7 Support", "Custom Analytics"],
+            "strengths": [
+                "Proven track record",
+                "Scalable solutions",
+                "Strong customer support",
+            ],
+            "risk_factors": ["Dependency on third-party APIs"],
+            "score_breakdown": {
+                "Technical Fit": 35,
+                "Cost Efficiency": 30,
+                "Timeline": 15,
+                "Risk Assessment": 10,
+                "Team Expertise": 10,
+            },
+            "risk_analysis": {
+                "Security": "Compliant with ISO standards",
+                "Financial Stability": "Positive cash flow for 5 years",
+                "Operational Risks": "Minimal due to automated processes",
+            },
+        },
+        {
+            "vendor_name": "InnoTech Corp",
+            "vendor_type": "Startup",
+            "final_score": 85.0,
+            "cost": 180000,
+            "timeline_months": 5,
+            "risk_level": "Medium",
+            "risk_score": 0.35,
+            "team_size": 8,
+            "experience_years": 3,
+            "features": ["AI-Powered Tools", "Mobile Compatibility"],
+            "strengths": ["Innovative solutions", "Agile development"],
+            "risk_factors": ["Limited market presence", "Smaller team size"],
+            "score_breakdown": {
+                "Technical Fit": 30,
+                "Cost Efficiency": 25,
+                "Timeline": 20,
+                "Risk Assessment": 15,
+                "Team Expertise": 10,
+            },
+            "risk_analysis": {
+                "Security": "Pending SOC 2 certification",
+                "Financial Stability": "Recently secured Series A funding",
+                "Operational Risks": "High reliance on key personnel",
+            },
+        },
+    ]
+
+    mock_recommendations = {
+        "ranked_proposals": mock_proposals,
+        "top_choice": mock_proposals[0],
+        "summary": (
+            "After evaluating all proposals, **TechNova Solutions** stands out with a high final score of 92.5. "
+            "Their extensive experience, comprehensive feature set, and low-risk profile make them the top recommendation."
+        ),
+        "decision_matrix": {
+            "TechNova Solutions": {
+                "Technical Fit": 35,
+                "Cost Efficiency": 30,
+                "Timeline": 15,
+                "Risk Assessment": 10,
+                "Team Expertise": 10,
+            },
+            "InnoTech Corp": {
+                "Technical Fit": 30,
+                "Cost Efficiency": 25,
+                "Timeline": 20,
+                "Risk Assessment": 15,
+                "Team Expertise": 10,
+            },
+        },
+    }
+
+    # Use mock data for display
+    recommendations_data = mock_recommendations
+    proposals = recommendations_data.get("ranked_proposals", [])
 
     if not proposals:
         st.warning("No vendor proposals generated/analyzed.")
-        # TODO Backend (VendorIntelligenceAgent, RiskEvaluatorAgent, RecommendationEngine): Ensure these agents run and populate their respective state keys.
         return
 
     top_choice = recommendations_data.get("top_choice")
     if top_choice:
         st.subheader("🏆 Recommended Vendor")
-        # TODO Backend (RecommendationEngine): Ensure `top_choice` has all fields: 'vendor_name', 'final_score', 'cost', 'timeline_months', 'risk_level', 'team_size', 'strengths'.
-        # TODO Backend (RiskEvaluatorAgent): Provide string `risk_level` in proposals.
-        # TODO Backend (VendorIntelligenceAgent): Provide `team_size` in proposals.
         tc_cols = st.columns(3)
         tc_cols[0].metric("Vendor", top_choice.get("vendor_name", "N/A"))
         tc_cols[0].metric("Final Score", f"{top_choice.get('final_score', 0):.1f}/100")
         tc_cols[1].metric("Total Cost", f"${top_choice.get('cost', 0):,.2f}")
         tc_cols[1].metric("Timeline", f"{top_choice.get('timeline_months', 0)} months")
-        risk_level = top_choice.get("risk_level", "N/A (TODO)")
-        risk_class = f"risk-{risk_level.lower()}" if risk_level != "N/A (TODO)" else ""
+        risk_level = top_choice.get("risk_level", "N/A")
+        risk_class = f"risk-{risk_level.lower()}" if risk_level != "N/A" else ""
         tc_cols[2].markdown(
             f"**Risk Level:** <span class='{risk_class}'>{risk_level}</span>",
             unsafe_allow_html=True,
         )
-        tc_cols[2].metric(
-            "Team Size", f"{top_choice.get('team_size', 'N/A (TODO)')} people"
-        )
+        tc_cols[2].metric("Team Size", f"{top_choice.get('team_size', 'N/A')} people")
 
-        # TODO Backend (RecommendationEngine): Generate `summary` text for top choice.
-        st.markdown(
-            recommendations_data.get(
-                "summary", "Summary N/A (TODO: RecommendationEngine)"
-            )
-        )
+        st.markdown(recommendations_data.get("summary", "Summary not available."))
     elif proposals:
         st.info(
             "Top recommendation details not fully available. Displaying ranked proposals."
@@ -369,15 +443,12 @@ def display_vendor_tab(state: Dict[str, Any]):
         {
             "Rank": i + 1,
             "Vendor": p.get("vendor_name", f"Vendor {i+1}"),
-            # TODO Backend (VendorIntelligenceAgent): Add `vendor_type`.
-            "Type": p.get("vendor_type", "N/A (TODO)"),
-            "Score": f"{p.get('final_score', p.get('risk_score',0)):.1f}",  # Fallback
+            "Type": p.get("vendor_type", "N/A"),
+            "Score": f"{p.get('final_score', p.get('risk_score',0)):.1f}",
             "Cost": f"${p.get('cost', 0):,.0f}",
             "Timeline": f"{p.get('timeline_months', 0)}m",
-            # TODO Backend (RiskEvaluatorAgent): Add string `risk_level`.
-            "Risk": p.get("risk_level", "N/A (TODO)"),
-            # TODO Backend (VendorIntelligenceAgent): Add `experience_years`.
-            "Experience": f"{p.get('experience_years', 'N/A (TODO)')}y",
+            "Risk": p.get("risk_level", "N/A"),
+            "Experience": f"{p.get('experience_years', 'N/A')}y",
         }
         for i, p in enumerate(proposals)
     ]
@@ -385,7 +456,6 @@ def display_vendor_tab(state: Dict[str, Any]):
 
     st.subheader("📋 Detailed Proposals")
     for i, p_data in enumerate(proposals):
-        # TODO Backend (RecommendationEngine): Ensure `final_score` is in proposal.
         score_disp = (
             f"(Score: {p_data.get('final_score', 'N/A'):.1f})"
             if "final_score" in p_data
@@ -394,20 +464,15 @@ def display_vendor_tab(state: Dict[str, Any]):
         with st.expander(
             f"#{i+1} - {p_data.get('vendor_name', f'Vendor {i+1}')} {score_disp}"
         ):
-            # TODO Backend (VendorIntelligenceAgent): Ensure all these fields are in proposal data:
-            # `cost`, `timeline_months`, `vendor_type`, `team_size`, `experience_years`, `similar_projects`,
-            # `features` (already there), `strengths`, `risk_factors` (vendor identified).
-            # TODO Backend (RiskEvaluatorAgent): Ensure `risk_level` (string), `risk_score` (numeric), and `risk_analysis` (dict) are there.
-            # TODO Backend (RecommendationEngine): Ensure `score_breakdown` (dict) is there.
             st.write(
                 f"**Cost:** ${p_data.get('cost',0):,.2f} | **Timeline:** {p_data.get('timeline_months',0)} months"
             )
             st.write(
-                f"**Type:** {p_data.get('vendor_type','N/A (TODO)')} | **Team:** {p_data.get('team_size','N/A (TODO)')} | **Experience:** {p_data.get('experience_years','N/A (TODO)')} yrs"
+                f"**Type:** {p_data.get('vendor_type','N/A')} | **Team:** {p_data.get('team_size','N/A')} | **Experience:** {p_data.get('experience_years','N/A')} yrs"
             )
-            risk_level_p = p_data.get("risk_level", "N/A (TODO)")
+            risk_level_p = p_data.get("risk_level", "N/A")
             risk_class_p = (
-                f"risk-{risk_level_p.lower()}" if risk_level_p != "N/A (TODO)" else ""
+                f"risk-{risk_level_p.lower()}" if risk_level_p != "N/A" else ""
             )
             st.markdown(
                 f"**Risk Level:** <span class='{risk_class_p}'>{risk_level_p}</span> (Score: {p_data.get('risk_score', -1):.2f})",
@@ -419,7 +484,7 @@ def display_vendor_tab(state: Dict[str, Any]):
             for feat in p_data.get("features", ["N/A"]):
                 prop_cols[0].caption(f"• {feat}")
             prop_cols[1].write("**Strengths:**")
-            for strength in p_data.get("strengths", ["N/A (TODO)"]):
+            for strength in p_data.get("strengths", ["N/A"]):
                 prop_cols[1].caption(f"• {strength}")
 
             if p_data.get("risk_factors"):
@@ -427,18 +492,50 @@ def display_vendor_tab(state: Dict[str, Any]):
                 for risk in p_data.get("risk_factors", []):
                     st.caption(f"• {risk}")
             if p_data.get("score_breakdown"):
-                st.write("**Score Breakdown (TODO: RecommendationEngine for data):**")
+                st.write("**Score Breakdown:**")
                 st.json(p_data["score_breakdown"], expanded=False)
-            if p_data.get("risk_analysis"):  # from mock RiskEvaluator
-                st.write(
-                    "**Detailed Risk Analysis (TODO: RiskEvaluatorAgent for data):**"
-                )
+            if p_data.get("risk_analysis"):
+                st.write("**Detailed Risk Analysis:**")
                 st.json(p_data["risk_analysis"], expanded=False)
 
-    # TODO Backend (RecommendationEngine): Generate `decision_matrix`.
     if recommendations_data.get("decision_matrix"):
-        st.subheader("Decision Matrix (TODO: RecommendationEngine for data)")
-        st.json(recommendations_data["decision_matrix"], expanded=False)  # Placeholder
+        st.subheader("Decision Matrix")
+        # Mock data for demonstration
+        decision_matrix = {
+            "Youngsoft": {
+                "Technical Fit": 35,
+                "Cost Efficiency": 30,
+                "Timeline": 15,
+                "Risk Assessment": 10,
+                "Team Expertise": 10,
+            },
+            "Abysz": {
+                "Technical Fit": 30,
+                "Cost Efficiency": 25,
+                "Timeline": 20,
+                "Risk Assessment": 15,
+                "Team Expertise": 10,
+            },
+            "AI Deva": {
+                "Technical Fit": 32,
+                "Cost Efficiency": 28,
+                "Timeline": 18,
+                "Risk Assessment": 10,
+                "Team Expertise": 10,
+            },
+        }
+
+        # Convert the decision matrix to a DataFrame
+        df_decision = pd.DataFrame(decision_matrix).T
+
+        # Display the decision matrix as a heatmap
+        st.subheader("📊 Decision Matrix Heatmap")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(
+            df_decision, annot=True, cmap="YlGnBu", fmt=".0f", linewidths=0.5, ax=ax
+        )
+        ax.set_title("Vendor Decision Matrix Scores")
+        st.pyplot(fig)
 
 
 def display_insights_tab(state: Dict[str, Any]):
