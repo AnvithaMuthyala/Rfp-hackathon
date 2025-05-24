@@ -537,7 +537,8 @@ def display_vendor_tab(state: Dict[str, Any]):
                 st.dataframe(df_risk)
 
     if recommendations_data.get("decision_matrix"):
-        st.subheader("Decision Matrix")
+        st.subheader("📊 Decision Matrix")
+
         # Mock data for demonstration
         decision_matrix = {
             "Youngsoft": {
@@ -567,7 +568,6 @@ def display_vendor_tab(state: Dict[str, Any]):
         df_decision = pd.DataFrame(decision_matrix).T
 
         # Display the decision matrix as a heatmap
-        st.subheader("📊 Decision Matrix Heatmap")
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.heatmap(
             df_decision, annot=True, cmap="YlGnBu", fmt=".0f", linewidths=0.5, ax=ax
