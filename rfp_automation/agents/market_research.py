@@ -16,12 +16,30 @@ from typing import List
 settings = get_settings()
 
 
+class CostRange(BaseModel):
+    min: int
+    max: int
+
+
+class CostAnalysisModel(BaseModel):
+    average_vendor_cost: float = Field(..., description="Average cost across vendors")
+    cost_range: CostRange = Field(
+        ..., description="Dictionary with 'min' and 'max' cost values"
+    )
+    currency: str = Field(..., description="Currency code, e.g., 'USD'")
+    notes: List[str] = Field(
+        default_factory=list, description="Additional cost-related notes"
+    )
+
+
 class MarketInsightsModel(BaseModel):
     market_trends: List[str] = Field(..., description="Key market trends")
     vendor_landscape: List[str] = Field(..., description="Top vendor-related insights")
     technology_trends: List[str] = Field(
         ..., description="Emerging technology practices"
     )
+    sources_analyzed: int = Field(..., description="Number of sources analyzed")
+    cost_analysis: CostAnalysisModel = Field(..., description="Detailed cost analysis")
 
 
 class MarketResearchAgent:
@@ -30,11 +48,7 @@ class MarketResearchAgent:
         self.retriever = TavilySearchAPIRetriever(
             api_key=tavily_api_key, k=5, include_raw_content=True
         )
-        self.llm_generate = get_llm(
-            temperature=0.7,
-            max_tokens=1024,
-            response_model=MarketInsightsModel,
-        )
+        self.llm_generate = get_llm(response_model=MarketInsightsModel)
 
     def process(self, state: EnhancedRFPState) -> EnhancedRFPState:
         parsed = state["parsed_requirements"]
@@ -51,6 +65,7 @@ class MarketResearchAgent:
 
             # Tavily search
             market_results = self._search_with_retry(market_query)
+
             vendor_results = self._search_with_retry(vendor_query)
             tech_results = self._search_with_retry(tech_query)
 
@@ -85,6 +100,7 @@ Please return structured insights as:
                 "technology_trends": insights.technology_trends,
                 "search_timestamp": datetime.now().isoformat(),
                 "queries_performed": [market_query, vendor_query, tech_query],
+                "cost_analysis": insights.cost_analysis.model_dump(),
             }
 
             state["market_research"] = market_research

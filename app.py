@@ -240,7 +240,7 @@ def display_overview_tab(state: Dict[str, Any], show_suggestions: bool):
         delta=(
             f"${cost_per_user_actual:.2f}/user/yr (Total Y1)"
             if cost_per_user_actual
-            else "Cost/user N/A (TODO)"
+            else "Cost/user N/A"
         ),
     )
 
@@ -258,7 +258,7 @@ def display_overview_tab(state: Dict[str, Any], show_suggestions: bool):
     req_cols[0].write(f"**Scale:** {parsed.get('scale', 0):,} users")
     req_cols[0].write(f"**Platforms:** {', '.join(parsed.get('platform', ['N/A']))}")
     # TODO Backend (NLPParserAgent): Extract and return `urgency` in `parsed_requirements`.
-    req_cols[0].write(f"**Urgency:** {parsed.get('urgency', 'N/A (TODO: NLPParser)')}")
+    req_cols[0].write(f"**Urgency:** {parsed.get('urgency', '')}")
 
     req_cols[1].write("**Features Identified:**")
     features = parsed.get("features", [])
@@ -298,9 +298,9 @@ def display_rfp_tab(state: Dict[str, Any]):
             "📄 Download as Markdown", rfp_doc, file_name=rfp_fn, mime="text/markdown"
         )
         # TODO: Implement PDF export (e.g., using FPDF2 or ReportLab, would be a new backend utility)
-        exp_cols[1].button("📰 Download as PDF (TODO)", disabled=True)
+        exp_cols[1].button("📰 Download as PDF", disabled=True)
         # TODO: Implement Email functionality (requires email service integration).
-        exp_cols[2].button("📧 Email RFP (TODO)", disabled=True)
+        exp_cols[2].button("📧 Email RFP", disabled=True)
 
         st.subheader("✏️ Review & Comments (UI Session Only)")
         comment = st.text_area("Add review comments:", key="rfp_review_comment_input")
@@ -349,11 +349,26 @@ def display_vendor_tab(state: Dict[str, Any]):
                 "Risk Assessment": 10,
                 "Team Expertise": 10,
             },
-            "risk_analysis": {
-                "Security": "Compliant with ISO standards",
-                "Financial Stability": "Positive cash flow for 5 years",
-                "Operational Risks": "Minimal due to automated processes",
-            },
+            "risk_analysis": [
+                {
+                    "Risk": "Data Breach",
+                    "Severity": "High",
+                    "Likelihood": "Medium",
+                    "Impact": "High",
+                },
+                {
+                    "Risk": "Downtime",
+                    "Severity": "Medium",
+                    "Likelihood": "High",
+                    "Impact": "High",
+                },
+                {
+                    "Risk": "Compliance Violation",
+                    "Severity": "Low",
+                    "Likelihood": "Medium",
+                    "Impact": "Medium",
+                },
+            ],
         },
         {
             "vendor_name": "InnoTech Corp",
@@ -375,11 +390,26 @@ def display_vendor_tab(state: Dict[str, Any]):
                 "Risk Assessment": 15,
                 "Team Expertise": 10,
             },
-            "risk_analysis": {
-                "Security": "Pending SOC 2 certification",
-                "Financial Stability": "Recently secured Series A funding",
-                "Operational Risks": "High reliance on key personnel",
-            },
+            "risk_analysis": [
+                {
+                    "Risk": "Data Breach",
+                    "Severity": "High",
+                    "Likelihood": "Medium",
+                    "Impact": "High",
+                },
+                {
+                    "Risk": "Downtime",
+                    "Severity": "Medium",
+                    "Likelihood": "High",
+                    "Impact": "High",
+                },
+                {
+                    "Risk": "Compliance Violation",
+                    "Severity": "Low",
+                    "Likelihood": "Medium",
+                    "Impact": "Medium",
+                },
+            ],
         },
     ]
 
@@ -493,10 +523,18 @@ def display_vendor_tab(state: Dict[str, Any]):
                     st.caption(f"• {risk}")
             if p_data.get("score_breakdown"):
                 st.write("**Score Breakdown:**")
-                st.json(p_data["score_breakdown"], expanded=False)
+                score_breakdown = p_data.get("score_breakdown")
+                # Create columns to display metrics side by side
+                cols = st.columns(len(score_breakdown))
+
+                for i, (category, score) in enumerate(score_breakdown.items()):
+                    with cols[i]:
+                        st.metric(label=category, value=f"{score}%", delta=None)
             if p_data.get("risk_analysis"):
                 st.write("**Detailed Risk Analysis:**")
-                st.json(p_data["risk_analysis"], expanded=False)
+                risk_analysis = p_data.get("risk_analysis")
+                df_risk = pd.DataFrame(risk_analysis)
+                st.dataframe(df_risk)
 
     if recommendations_data.get("decision_matrix"):
         st.subheader("Decision Matrix")
@@ -544,71 +582,119 @@ def display_insights_tab(state: Dict[str, Any]):
     security = state.get("security_requirements", {})
     tech = state.get("tech_recommendations", {})
     budget = state.get("budget_estimate", {})
-    cached_knowledge = state.get(
-        "cached_knowledge", []
-    )  # Existing backend provides this
+    cached_knowledge = state.get("cached_knowledge", [])
 
     if market_research:
         st.subheader("📈 Market Research Insights")
-        # TODO Backend (MarketResearchAgent): Provide `sources_analyzed` (count) and `cost_analysis` (dict).
         st.metric(
             "Sources Found (Tavily)",
             state.get("search_metadata", {}).get("sources_found", 0),
         )
+
         st.write("**Market Trends:**")
         for trend in market_research.get("market_trends", ["N/A"]):
             st.info(trend)
+
         st.write("**Vendor Landscape Snippets:**")
         for snippet in market_research.get("vendor_landscape", ["N/A"]):
             st.caption(f"• {snippet}")
-        if market_research.get("cost_analysis"):
-            st.write("**Market Cost Analysis (TODO: MarketResearchAgent for data):**")
-            st.json(market_research["cost_analysis"], expanded=False)
+
+        if ca := market_research.get("cost_analysis"):
+            st.write("**Market Cost Analysis:**")
+            # Display metrics
+            col1, col2, col3 = st.columns(3)
+
+            col1.metric(
+                label="Average Cost",
+                value=f"${ca['average_vendor_cost']:,.2f}",
+                delta=None,
+            )
+
+            col2.metric(
+                label="High Estimate",
+                value=f"${ca['cost_range']['max']:,.2f}",
+                delta=None,
+            )
+
+            col3.metric(
+                label="Low Estimate",
+                value=f"${ca['cost_range']['min']:,.2f}",
+                delta=None,
+            )
+
+            # Display notes as a list
+            if notes := ca.get("notes"):
+                st.write("**Notes:**")
+                for note in notes:
+                    st.caption(f"• {note}")
 
     if cached_knowledge:
         st.subheader("🧠 Knowledge Base (ChromaDB)")
         st.write(f"Retrieved {len(cached_knowledge)} relevant cached insights.")
         for i, k in enumerate(cached_knowledge[:3]):
             with st.expander(
-                f"Insight {i+1} (Score: {k.get('relevance_score',0):.2f}) - Source: {k.get('source','N/A')}"
+                f"Insight {i+1} (Score: {k.get('relevance_score', 0):.2f}) - Source: {k.get('source', 'N/A')}"
             ):
                 st.caption(k.get("content", "N/A")[:500] + "...")
 
     st.subheader("🔒 Security & Compliance")
-    # TODO Backend (SecurityAgent): Provide more granular requirements (data_retention, backup_recovery, HIPAA, PCI DSS etc.).
-    st.write(
-        f"**Compliance Suggested:** {', '.join(security.get('compliance', ['N/A (TODO)']))}"
-    )
-    st.json(
-        security, expanded=False
-    )  # Display whatever current security agent provides
+    st.write("**Compliance Suggested:**")
+    if security:
+        st.subheader("🔒 Security & Compliance")
 
-    st.subheader("⚙️ Technology Stack Recommendations")
-    # TODO Backend (TechAgent): Provide more detailed, context-aware stack (specific tools, mobile tech).
-    st.json(tech, expanded=False)  # Display whatever current tech agent provides
+        # Display compliance requirements as a list
+        compliance_list = security.get("compliance", [])
+        st.write("**Compliance Suggested:**")
+        for item in compliance_list:
+            st.caption(f"• {item}")
+
+        # Display additional security details
+        extra_security = {k: v for k, v in security.items() if k != "compliance"}
+        if extra_security:
+            st.write("**Additional Security Details:**")
+            for k, v in extra_security.items():
+                st.markdown(f"- **{k.replace('_', ' ').title()}**: {v}")
+
+    if extra := {k: v for k, v in security.items() if k != "compliance"}:
+        st.write("**Additional Security Details:**")
+        for k, v in extra.items():
+            st.markdown(f"- **{k.replace('_', ' ').title()}**: {v}")
+
+    if tech:
+        st.subheader("⚙️ Technology Stack Recommendations")
+
+        # Display technology recommendations
+        for k, v in tech.items():
+            st.markdown(f"- **{k.replace('_', ' ').title()}**: {v}")
 
     st.subheader("💰 Budget Analysis")
-    # TODO Backend (EnhancedBudgetAgent): Provide `cost_breakdown` (dict with % impacts) for table & chart.
-    # TODO Backend (EnhancedBudgetAgent): Provide `cost_per_user_first_year`.
+
     if budget:
-        st.write(f"**Est. Development Cost:** ${budget.get('development_cost',0):,.2f}")
-        st.write(f"**Est. Total First Year:** ${budget.get('total_first_year',0):,.2f}")
-        st.write(
-            f"**Market Adjustment Factor Applied:** {budget.get('market_adjustment_factor', 'N/A (from backend)')}"
-        )
-        if budget.get("cost_breakdown"):
-            st.write("**Cost Breakdown (TODO: EnhancedBudgetAgent for data):**")
-            st.json(budget["cost_breakdown"], expanded=False)  # Placeholder display
-            # Placeholder for pie chart if data becomes available
-            # factors = {k:v for k,v in budget['cost_breakdown'].items() if v != 0}
-            # if factors:
-            #     fig, ax = plt.subplots()
-            #     ax.pie(factors.values(), labels=factors.keys(), autopct='%1.1f%%', startangle=90)
-            #     st.pyplot(fig)
-        else:
-            st.caption(
-                "Detailed cost breakdown for chart not available (TODO: Backend)."
+        # Create columns for displaying metrics side by side
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric(
+                label="Est. Development Cost",
+                value=f"${budget['development_cost']:,.2f}",
             )
+
+        with col2:
+            st.metric(
+                label="Est. Total First Year",
+                value=f"${budget['total_first_year']:,.2f}",
+            )
+
+        with col3:
+            st.metric(
+                label="Market Adjustment Factor",
+                value=f"{budget['market_adjustment_factor']:.2f}x",
+            )
+
+        if cb := budget.get("cost_breakdown"):
+            st.write("**Cost Breakdown:**")
+            for k, v in cb.items():
+                st.markdown(f"- **{k}**: {v}%")
     else:
         st.warning("Budget details not available.")
 
@@ -656,7 +742,7 @@ def display_analytics_tab(state: Dict[str, Any]):
         high_risk_an = sum(
             1 for p in proposals if p.get("risk_level") == "High"
         )  # Relies on TODO
-        st.metric("High Risk Proposals (TODO)", high_risk_an)
+        st.metric("High Risk Proposals", high_risk_an)
 
         st.subheader("📊 Vendor Comparison Charts (Placeholders - Needs Backend Data)")
         # TODO: Populate charts with actual data once backend provides all necessary fields consistently.
@@ -722,7 +808,7 @@ def display_analytics_tab(state: Dict[str, Any]):
 
     # TODO: Implement actual analytics data collection and JSON export.
     st.subheader("📤 Export Analytics (Placeholder)")
-    st.button("📊 Export Analytics Data (TODO)", disabled=True)
+    st.button("📊 Export Analytics Data", disabled=True)
 
 
 # --- Footer ---
