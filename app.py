@@ -85,7 +85,7 @@ def main():
             f"Google API Key: {'✅ Present' if google_api_key_present else '❌ Missing/Default'}"
         )
 
-        st.subheader("Workflow Control (Conceptual)")
+        st.subheader("Workflow Control")
         # TODO: These checkboxes need backend integration to actually control workflow paths.
         # Currently, the backend 'EnhancedRFPAutomationWorkflow' runs all main steps.
         # Options:
@@ -744,7 +744,7 @@ def display_analytics_tab(state: Dict[str, Any]):
         )  # Relies on TODO
         st.metric("High Risk Proposals", high_risk_an)
 
-        st.subheader("📊 Vendor Comparison Charts (Placeholders - Needs Backend Data)")
+        st.subheader("📊 Vendor Comparison Charts")
         # TODO: Populate charts with actual data once backend provides all necessary fields consistently.
         # (final_score, cost, vendor_name, risk_level string, timeline_months)
         if len(proposals) > 1:
